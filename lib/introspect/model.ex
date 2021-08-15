@@ -3,10 +3,29 @@ defmodule Introspection.Model do
         %{"class" => tables} = introspection_result,
         schema
       ) do
-    tables
-    |> Enum.filter(fn table -> table["namespaceName"] == schema end)
-    |> Enum.map(&build_table_objects/1)
-    |> Enum.map(fn table -> add_attributes_for_table(table, introspection_result) end)
+    references_and_tables =
+      tables
+      |> Enum.filter(fn table -> table["namespaceName"] == schema end)
+      |> Enum.map(&build_table_objects/1)
+      |> Enum.map(fn table -> add_attributes_for_table(table, introspection_result) end)
+
+    {references, tables} =
+      Enum.reduce(references_and_tables, {[], []}, fn {references, tables},
+                                                      {ref_acc, table_acc} ->
+        {[references | ref_acc], [tables | table_acc]}
+      end)
+
+    # flatten references list
+    references =
+      Enum.flat_map(references, fn
+        x when is_list(x) -> x
+        x -> [x]
+      end)
+
+    add_references_to_foriegn_tables(
+      tables,
+      references
+    )
   end
 
   def from_introspection(result, _schema) do
@@ -46,7 +65,7 @@ defmodule Introspection.Model do
   """
 
   def add_attributes_for_table(
-        %{id: table_id} = table,
+        %{id: table_id, name: table_name} = table,
         %{"attribute" => attributes} = introspection_result
       ) do
     contraints_for_table =
@@ -85,10 +104,9 @@ defmodule Introspection.Model do
           is_not_null: attr["isNotNull"],
           has_default: attr["hasDefault"],
           type_id: attr["typeId"],
-          # below will be added in another step
-          # TODO delete later
           type: nil,
-          constraints: nil
+          constraints: nil,
+          parent_table: %{name: table_name, id: table_id}
         }
       end)
       |> Enum.map(fn attr -> add_type_for_attribute(attr, introspection_result["type"]) end)
@@ -100,8 +118,17 @@ defmodule Introspection.Model do
           table_name_by_id
         )
       end)
+      |> Enum.sort(fn %{num: num1}, %{num: num2} -> num1 < num2 end)
 
-    Map.put(table, :attributes, attributes)
+    references =
+      attributes
+      |> Enum.filter(fn %{constraints: constraints} ->
+        Enum.find(constraints, fn constraint ->
+          constraint.type == :foreign_key
+        end)
+      end)
+
+    {references, Map.put(table, :attributes, attributes)}
   end
 
   @doc """
@@ -179,7 +206,11 @@ defmodule Introspection.Model do
         Enum.any?(attrNums, fn attrNum -> attrNum == attr.num end)
       end)
       |> Enum.map(fn constraints ->
-        build_constraint(constraints, attrs_by_class_id_and_num, table_name_by_id)
+        build_constraint(
+          constraints,
+          attrs_by_class_id_and_num,
+          table_name_by_id
+        )
       end)
 
     Map.put(attr, :constraints, attr_constraints)
@@ -227,7 +258,45 @@ defmodule Introspection.Model do
 
     %{
       type: :foreign_key,
-      meta: %{table: %{id: foriegn_table_id, name: table_name}, attributes: attributes}
+      referenced_table: %{
+        table: %{id: foriegn_table_id, name: table_name},
+        attributes: attributes
+      }
     }
+  end
+
+  def add_references_to_foriegn_tables(tables, references \\ []) when is_list(references) do
+    tables_by_id =
+      tables
+      |> Enum.map(fn %{id: id} = table -> {id, table} end)
+      |> Enum.into(%{})
+
+    Enum.reduce(references, tables_by_id, fn reference, acc ->
+      %{attributes: attrs, table: %{id: id}} = get_referenced_table(reference)
+
+      new_reference = %{
+        table:
+          Map.merge(reference.parent_table, %{
+            attribute: reference
+          }),
+        via: attrs
+      }
+
+      referenced_by =
+        case get_in(acc, [id, :external_references]) do
+          nil -> [new_reference]
+          existing_references -> [new_reference | existing_references]
+        end
+
+      put_in(acc, [id, :external_references], referenced_by)
+    end)
+    |> Enum.map(fn {_, v} -> v end)
+  end
+
+  defp get_referenced_table(%{constraints: constraints}) do
+    Enum.find(constraints, fn constraint ->
+      constraint.type == :foreign_key && is_map(constraint.referenced_table)
+    end)
+    |> Map.get(:referenced_table)
   end
 end

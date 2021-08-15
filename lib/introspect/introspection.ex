@@ -6,7 +6,7 @@ defmodule Introspection do
   https://github.com/graphile/graphile-engine/blob/v4/packages/graphile-build-pg/src/plugins/PgIntrospectionPlugin.js
   """
 
- def run(db_name, schemas) do
+  def run(db_name, schemas) do
     introspection_results_by_kind = run_introspection(schemas, db_name)
 
     known_schemas =
@@ -16,7 +16,6 @@ defmodule Introspection do
     missing_schemas =
       schemas
       |> Enum.filter(fn schema -> !Enum.member?(known_schemas, schema) end)
-      |> IO.inspect()
 
     if length(missing_schemas) > 0 do
       error_message = """

@@ -12,6 +12,42 @@ defmodule Introspection.ModelTest do
       name: "users",
       attributes: [
         %{
+          name: "id",
+          type: %{
+            description: "-2 billion to 2 billion integer, 4-byte storage",
+            name: "int4",
+            tags: %{},
+            category: "N"
+          },
+          type_id: "23",
+          description: nil,
+          has_default: true,
+          is_not_null: true,
+          num: 1,
+          parent_table: %{id: "233794", name: "users"},
+          constraints: [
+            %{
+              type: :primary_key
+            }
+          ]
+        },
+        %{
+          name: "name",
+          type: %{
+            description: "variable-length string, no limit specified",
+            name: "text",
+            category: "S",
+            tags: %{}
+          },
+          type_id: "25",
+          description: nil,
+          has_default: false,
+          is_not_null: false,
+          num: 2,
+          parent_table: %{id: "233794", name: "users"},
+          constraints: []
+        },
+        %{
           name: "email",
           type: %{
             description: "variable-length string, no limit specified",
@@ -29,41 +65,8 @@ defmodule Introspection.ModelTest do
               with: [3]
             }
           ],
+          parent_table: %{id: "233794", name: "users"},
           num: 3
-        },
-        %{
-          name: "name",
-          type: %{
-            description: "variable-length string, no limit specified",
-            name: "text",
-            category: "S",
-            tags: %{}
-          },
-          type_id: "25",
-          description: nil,
-          has_default: false,
-          is_not_null: false,
-          num: 2,
-          constraints: []
-        },
-        %{
-          name: "id",
-          type: %{
-            description: "-2 billion to 2 billion integer, 4-byte storage",
-            name: "int4",
-            tags: %{},
-            category: "N"
-          },
-          type_id: "23",
-          description: nil,
-          has_default: true,
-          is_not_null: true,
-          num: 1,
-          constraints: [
-            %{
-              type: :primary_key
-            }
-          ]
         }
       ]
     }
@@ -73,7 +76,7 @@ defmodule Introspection.ModelTest do
     assert(Model.from_introspection(@user_introspection_result, schema) |> hd == expected)
   end
 
-  test "foreign key constrating" do
+  test "foreign key constraint" do
     fk_constraint =
       """
       {
@@ -101,7 +104,10 @@ defmodule Introspection.ModelTest do
 
     expected = %{
       type: :foreign_key,
-      meta: %{table: %{name: "posts", id: "236802"}, attributes: [%{name: "id", num: 1}]}
+      referenced_table: %{
+        table: %{name: "posts", id: "236802"},
+        attributes: [%{name: "id", num: 1}]
+      }
     }
 
     assert Model.build_constraint(fk_constraint, attrs_by_class_id_and_num, table_name_by_id) ==
