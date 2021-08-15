@@ -113,6 +113,124 @@ defmodule EctoGen.FieldGeneratorTest do
              {:belongs_to, "workflows", "Workflow", [ref: "uuid"]}
   end
 
+  test "it generates a has_many relationship" do
+    # Because it holds the foriegn key, it belongs_to the association
+    reference = %{
+      table: %{
+        attribute: %{
+          constraints: [
+            %{
+              referenced_table: %{
+                attributes: [%{name: "id", num: 1}],
+                table: %{id: "231389", name: "object_comments"}
+              },
+              type: :foreign_key
+            }
+          ],
+          description: nil,
+          has_default: false,
+          is_not_null: false,
+          name: "object_comment_id",
+          num: 3,
+          parent_table: %{id: "231463", name: "user_activity_events"},
+          type: %{
+            category: "U",
+            description: "UUID datatype",
+            name: "uuid",
+            tags: %{}
+          },
+          type_id: "2950"
+        },
+        id: "231463",
+        name: "user_activity_events"
+      },
+      via: [%{name: "id", num: 1}]
+    }
+
+    assert FieldGenerator.generate(reference) ==
+             {:has_many, "user_activity_events", "UserActivityEvent", []}
+  end
+
+  test "it generates a has_many relationship with an unexpected foreign_key" do
+    # Because it holds the foriegn key, it belongs_to the association
+    reference = %{
+      table: %{
+        attribute: %{
+          constraints: [
+            %{
+              referenced_table: %{
+                attributes: [%{name: "id", num: 1}],
+                table: %{id: "231389", name: "object_comments"}
+              },
+              type: :foreign_key
+            }
+          ],
+          description: nil,
+          has_default: false,
+          is_not_null: false,
+          name: "comment_id",
+          num: 3,
+          parent_table: %{id: "231463", name: "user_activity_events"},
+          type: %{
+            category: "U",
+            description: "UUID datatype",
+            name: "uuid",
+            tags: %{}
+          },
+          type_id: "2950"
+        },
+        id: "231463",
+        name: "user_activity_events"
+      },
+      via: [%{name: "id", num: 1}]
+    }
+
+    assert FieldGenerator.generate(reference) ==
+             {:has_many, "user_activity_events", "UserActivityEvent", [fk: "comment_id"]}
+  end
+
+  test "it generates a has_one relationship" do
+    # Because it holds the foriegn key, it belongs_to the association
+    reference = %{
+      table: %{
+        attribute: %{
+          constraints: [
+            %{
+              referenced_table: %{
+                attributes: [%{name: "id", num: 1}],
+                table: %{id: "231389", name: "object_comments"}
+              },
+              type: :foreign_key
+            },
+            %{
+              type: :uniq,
+              with: [3]
+            }
+          ],
+          description: nil,
+          has_default: false,
+          is_not_null: false,
+          name: "object_comment_id",
+          num: 3,
+          parent_table: %{id: "231463", name: "user_activity_events"},
+          type: %{
+            category: "U",
+            description: "UUID datatype",
+            name: "uuid",
+            tags: %{}
+          },
+          type_id: "2950"
+        },
+        id: "231463",
+        name: "user_activity_events"
+      },
+      via: [%{name: "id", num: 1}]
+    }
+
+    assert FieldGenerator.generate(reference) ==
+             {:has_one, "user_activity_events", "UserActivityEvent", []}
+  end
+
   test "it converts tuple to string" do
     assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow"}) ==
              "belongs_to :workflows, Workflow"

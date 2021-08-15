@@ -253,7 +253,6 @@ defmodule Introspection.Model do
       |> Enum.map(fn num ->
         %{"name" => name} = attrs_by_class_id_and_num["#{foriegn_table_id}_#{num}"]
         %{name: name, num: num}
-        # Enum.find(table.attributes, fn attr -> attr.num == num end)
       end)
 
     %{
