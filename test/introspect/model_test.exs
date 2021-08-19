@@ -10,6 +10,7 @@ defmodule Introspection.ModelTest do
     expected = %{
       id: "233794",
       name: "users",
+      description: nil,
       attributes: [
         %{
           name: "id",
@@ -112,5 +113,145 @@ defmodule Introspection.ModelTest do
 
     assert Model.build_constraint(fk_constraint, attrs_by_class_id_and_num, table_name_by_id) ==
              expected
+  end
+
+  test "generates join references" do
+    references = [
+      %{
+        constraints: [
+          %{type: :uniq, with: [2, 3]},
+          %{
+            referenced_table: %{
+              attributes: [%{name: "id", num: 1}],
+              table: %{id: "231079", name: "users"}
+            },
+            type: :foreign_key
+          }
+        ],
+        description: nil,
+        has_default: true,
+        is_not_null: true,
+        name: "user_id",
+        num: 2,
+        parent_table: %{id: "231957", name: "user_objects"},
+        type: %{
+          category: "U",
+          description: "UUID datatype",
+          name: "uuid",
+          tags: %{}
+        },
+        type_id: "2950"
+      },
+      %{
+        constraints: [
+          %{
+            referenced_table: %{
+              attributes: [%{name: "id", num: 1}],
+              table: %{id: "231356", name: "objects"}
+            },
+            type: :foreign_key
+          },
+          %{type: :uniq, with: [2, 3]}
+        ],
+        description: nil,
+        has_default: false,
+        is_not_null: true,
+        name: "object_id",
+        num: 3,
+        parent_table: %{id: "231957", name: "user_objects"},
+        type: %{
+          category: "U",
+          description: "UUID datatype",
+          name: "uuid",
+          tags: %{}
+        },
+        type_id: "2950"
+      }
+    ]
+
+    expected = [
+      %{
+        constraints: [
+          %{type: :uniq, with: [2, 3]},
+          %{
+            referenced_table: %{
+              attributes: [%{name: "id", num: 1}],
+              table: %{id: "231079", name: "users"}
+            },
+            type: :foreign_key
+          }
+        ],
+        description: nil,
+        has_default: true,
+        is_not_null: true,
+        joined_to: %{
+          constraints: [
+            %{
+              referenced_table: %{
+                attributes: [%{name: "id", num: 1}],
+                table: %{id: "231356", name: "objects"}
+              },
+              type: :foreign_key
+            },
+            %{type: :uniq, with: [2, 3]}
+          ],
+          description: nil,
+          has_default: false,
+          is_not_null: true,
+          name: "object_id",
+          num: 3,
+          parent_table: %{id: "231957", name: "user_objects"},
+          type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}},
+          type_id: "2950"
+        },
+        name: "user_id",
+        num: 2,
+        parent_table: %{id: "231957", name: "user_objects"},
+        type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}},
+        type_id: "2950"
+      },
+      %{
+        constraints: [
+          %{
+            referenced_table: %{
+              attributes: [%{name: "id", num: 1}],
+              table: %{id: "231356", name: "objects"}
+            },
+            type: :foreign_key
+          },
+          %{type: :uniq, with: [2, 3]}
+        ],
+        description: nil,
+        has_default: false,
+        is_not_null: true,
+        joined_to: %{
+          constraints: [
+            %{type: :uniq, with: [2, 3]},
+            %{
+              referenced_table: %{
+                attributes: [%{name: "id", num: 1}],
+                table: %{id: "231079", name: "users"}
+              },
+              type: :foreign_key
+            }
+          ],
+          description: nil,
+          has_default: true,
+          is_not_null: true,
+          name: "user_id",
+          num: 2,
+          parent_table: %{id: "231957", name: "user_objects"},
+          type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}},
+          type_id: "2950"
+        },
+        name: "object_id",
+        num: 3,
+        parent_table: %{id: "231957", name: "user_objects"},
+        type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}},
+        type_id: "2950"
+      }
+    ]
+
+    assert Introspection.Model.generate_join_references(references) == expected
   end
 end

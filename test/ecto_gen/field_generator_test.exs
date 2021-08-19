@@ -231,6 +231,58 @@ defmodule EctoGen.FieldGeneratorTest do
              {:has_one, "user_activity_events", "UserActivityEvent", []}
   end
 
+  test "it handles many_to_many join relationships" do
+    join = %{
+      table: %{
+        attribute: %{
+          constraints: [
+            %{
+              referenced_table: %{
+                attributes: [%{name: "id", num: 1}],
+                table: %{id: "231356", name: "objects"}
+              },
+              type: :foreign_key
+            },
+            %{type: :uniq, with: [2, 3]}
+          ],
+          description: nil,
+          has_default: false,
+          is_not_null: true,
+          joined_to: %{
+            constraints: [
+              %{type: :uniq, with: [2, 3]},
+              %{
+                referenced_table: %{
+                  attributes: [%{name: "id", num: 1}],
+                  table: %{id: "231079", name: "users"}
+                },
+                type: :foreign_key
+              }
+            ],
+            description: nil,
+            has_default: true,
+            is_not_null: true,
+            name: "user_id",
+            num: 2,
+            parent_table: %{id: "231957", name: "user_objects"},
+            type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}},
+            type_id: "2950"
+          },
+          name: "object_id",
+          num: 3,
+          parent_table: %{id: "231957", name: "user_objects"},
+          type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}},
+          type_id: "2950"
+        }
+      }
+    }
+
+    assert(
+      FieldGenerator.generate(join) ==
+        {:many_to_many, "users", "User", join_through: "user_objects"}
+    )
+  end
+
   test "it converts field tuple to string" do
     assert FieldGenerator.to_string({:field, "name", ":string"}) ==
              "field :name, :string"
@@ -259,5 +311,12 @@ defmodule EctoGen.FieldGeneratorTest do
   test "it converts has_one to string" do
     assert FieldGenerator.to_string({:has_one, "workflow", "Workflow", []}) ==
              "has_one :workflow, Workflow"
+  end
+
+  test "it converts many_to_many to string" do
+    ref = {:many_to_many, "users", "User", join_through: "user_objects"}
+
+    assert FieldGenerator.to_string(ref) ==
+             "many_to_many :users, User, join_through: \"user_objects\""
   end
 end

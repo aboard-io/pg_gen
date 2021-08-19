@@ -35,8 +35,8 @@ defmodule Introspection.Model do
     IO.puts("Hmm")
   end
 
-  def build_table_objects(%{"id" => id, "name" => name}) do
-    %{id: id, name: name}
+  def build_table_objects(%{"id" => id, "name" => name, "description" => description}) do
+    %{id: id, name: name, description: description}
   end
 
   @doc """
@@ -130,7 +130,14 @@ defmodule Introspection.Model do
         end)
       end)
 
-    {references, Map.put(table, :attributes, attributes)}
+    join_references =
+      if length(references) > 1 do
+        generate_join_references(references)
+      else
+        []
+      end
+
+    {references ++ join_references, Map.put(table, :attributes, attributes)}
   end
 
   @doc """
@@ -299,5 +306,21 @@ defmodule Introspection.Model do
       constraint.type == :foreign_key && is_map(constraint.referenced_table)
     end)
     |> Map.get(:referenced_table)
+  end
+
+  def generate_join_references(references) do
+    references
+    |> Enum.map(fn reference ->
+      other_references = references -- [reference]
+
+      other_references
+      |> Enum.map(fn other ->
+        Map.put(reference, :joined_to, other)
+      end)
+    end)
+    |> Enum.flat_map(fn
+      x when is_list(x) -> x
+      x -> [x]
+    end)
   end
 end

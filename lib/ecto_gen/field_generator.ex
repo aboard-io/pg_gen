@@ -4,7 +4,7 @@ defmodule EctoGen.FieldGenerator do
     "citext" => "string",
     "timestamptz" => "utc_datetime",
     "uuid" => "Ecto.UUID",
-    "jsonb" => "map",
+    "jsonb" => "EctoJSON",
     "bool" => "boolean",
     "int4" => "integer"
   }
@@ -14,6 +14,35 @@ defmodule EctoGen.FieldGenerator do
       nil -> {:field, generate_field(attribute), generate_type(attribute)}
       constraint -> generate_reference_type(constraint, attribute)
     end
+  end
+
+  def generate(%{
+        table: %{
+          attribute: %{
+            joined_to: joined_to,
+            parent_table: parent_table,
+            name: attr_name,
+            constraints: constraints
+          }
+        }
+      }) do
+    %{referenced_table: join_referenced_table} = get_reference_constraint(joined_to.constraints)
+    %{referenced_table: referenced_table} = get_reference_constraint(constraints)
+    joined_table_name = join_referenced_table.table.name
+
+    join_keys =
+      case is_standard_foreign_key(attr_name, referenced_table.table.name) &&
+             is_standard_foreign_key(joined_to.name, joined_table_name) do
+        true -> []
+        false -> [join_keys: [{attr_name, "id"}, {joined_to.name, "id"}]]
+      end
+
+    options =
+      generate_reference_options(joined_to, join_referenced_table, joined_table_name)
+      |> Keyword.merge(join_keys)
+
+    {:many_to_many, joined_table_name, table_name_to_queryable(joined_table_name),
+     Keyword.merge([join_through: parent_table.name], options)}
   end
 
   def generate(%{table: table}) do
@@ -58,7 +87,7 @@ defmodule EctoGen.FieldGenerator do
     name = String.replace(name, ~r/^[_]/, "")
     type = @type_map[name] || name
 
-    case Regex.match?(~r/^[A-Z]/, type) do
+    case Regex.match?(~r/^[A-Z\{]/, type) do
       true -> type
       false -> ":#{type}"
     end
@@ -100,14 +129,17 @@ defmodule EctoGen.FieldGenerator do
   end
 
   def to_string({:field, name, type}) do
-    IO.puts("""
-    Fix this to_string for field
-    # See https://dennisbeatty.com/use-the-new-enum-type-in-ecto-3-5.html
-    """)
-
     case String.match?(type, ~r/(types?|role|vector)$/) do
-      true -> ""
-      false -> "field :#{name}, #{type}"
+      true ->
+        IO.puts("""
+        Fix this to_string for field: #{name}: #{type}
+        # See https://dennisbeatty.com/use-the-new-enum-type-in-ecto-3-5.html
+        """)
+
+        ""
+
+      false ->
+        "field :#{name}, #{type}"
     end
   end
 
@@ -119,6 +151,12 @@ defmodule EctoGen.FieldGenerator do
   def to_string({:has_many, name, queryable, options}) do
     "has_many :#{name}, #{queryable}"
     |> process_options(options)
+  end
+
+  def to_string({:many_to_many, name, queryable, options}) do
+    "many_to_many :#{name}, #{queryable}"
+    # we don't need foreign_key on many_to_many
+    |> process_options(Keyword.drop(options, [:fk]))
   end
 
   def to_string({:has_one, name, queryable, options}) do
@@ -134,6 +172,13 @@ defmodule EctoGen.FieldGenerator do
 
         :ref ->
           "#{acc}, references: :#{v}"
+
+        :join_through ->
+          "#{acc}, join_through: \"#{v}\""
+
+        :join_keys ->
+          [{current_id, _}, {associated_id, _}] = v
+          "#{acc}, join_keys: [#{current_id}: :id, #{associated_id}: :id]"
       end
     end)
   end

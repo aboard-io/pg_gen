@@ -1,5 +1,6 @@
 defmodule Mix.Tasks.PgGen.GenerateEcto do
   use Mix.Task
+  alias EctoGen.TableGenerator
 
   @doc """
   Generate Ecto schemas
@@ -54,9 +55,14 @@ defmodule Mix.Tasks.PgGen.GenerateEcto do
 
     Introspection.run(database_config, String.split(schema, ","))
     |> Introspection.Model.from_introspection(schema)
-    |> IO.inspect()
-    |> Enum.map(fn table -> EctoGen.TableGenerator.generate(table, schema) end)
+    |> Enum.map(fn table -> TableGenerator.generate(table, schema) end)
     |> Enum.map(fn {name, file} -> File.write!("#{file_path}/#{name}.ex", file) end)
+
+    ecto_json_type_path = "#{file_path}/ecto_json.ex"
+
+    if !File.exists?(ecto_json_type_path) do
+      File.write!(ecto_json_type_path, TableGenerator.ecto_json_type())
+    end
 
     # |> IO.inspect()
 
