@@ -20,7 +20,7 @@ defmodule EctoGen.FieldGeneratorTest do
       type_id: "2950"
     }
 
-    assert FieldGenerator.generate(id_field) == {:field, "id", "uuid"}
+    assert FieldGenerator.generate(id_field) == {:field, "id", "Ecto.UUID"}
   end
 
   test "it generates a belongs_to relationship" do
@@ -50,7 +50,7 @@ defmodule EctoGen.FieldGeneratorTest do
     }
 
     assert FieldGenerator.generate(foriegn_field) ==
-             {:belongs_to, "workflows", "Workflow", []}
+             {:belongs_to, "workflow", "Workflow", []}
   end
 
   test "it generates a belongs_to relationship with an unexpected foreign_key" do
@@ -80,7 +80,7 @@ defmodule EctoGen.FieldGeneratorTest do
     }
 
     assert FieldGenerator.generate(foriegn_field) ==
-             {:belongs_to, "workflows", "Workflow", [fk: "my_workflow_id"]}
+             {:belongs_to, "my_workflow", "Workflow", [fk: "my_workflow_id"]}
   end
 
   test "it generates a belongs_to relationship with an unexpected referenced id" do
@@ -110,7 +110,7 @@ defmodule EctoGen.FieldGeneratorTest do
     }
 
     assert FieldGenerator.generate(foriegn_field) ==
-             {:belongs_to, "workflows", "Workflow", [ref: "uuid"]}
+             {:belongs_to, "workflow", "Workflow", [ref: "uuid"]}
   end
 
   test "it generates a has_many relationship" do
@@ -231,18 +231,33 @@ defmodule EctoGen.FieldGeneratorTest do
              {:has_one, "user_activity_events", "UserActivityEvent", []}
   end
 
-  test "it converts tuple to string" do
-    assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow"}) ==
+  test "it converts field tuple to string" do
+    assert FieldGenerator.to_string({:field, "name", ":string"}) ==
+             "field :name, :string"
+  end
+
+  test "it converts belongs_to to string" do
+    assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow", []}) ==
              "belongs_to :workflows, Workflow"
   end
 
   test "it sets foriegn key if it's not {singular_table}_id" do
-    assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow"}, fk: "wf") ==
-             "belongs_to :workflows, Workflow, foreign_key: \"wf\""
+    assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow", fk: "wf"}) ==
+             "belongs_to :workflows, Workflow, foreign_key: :wf"
   end
 
   test "it sets reference id if it's not id" do
-    assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow"}, ref: "uuid") ==
-             "belongs_to :workflows, Workflow, references: \"uuid\""
+    assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow", ref: "uuid"}) ==
+             "belongs_to :workflows, Workflow, references: :uuid"
+  end
+
+  test "it converts has_many to string" do
+    assert FieldGenerator.to_string({:has_many, "workflows", "Workflow", []}) ==
+             "has_many :workflows, Workflow"
+  end
+
+  test "it converts has_one to string" do
+    assert FieldGenerator.to_string({:has_one, "workflow", "Workflow", []}) ==
+             "has_one :workflow, Workflow"
   end
 end

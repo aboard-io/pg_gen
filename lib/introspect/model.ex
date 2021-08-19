@@ -26,6 +26,8 @@ defmodule Introspection.Model do
       tables,
       references
     )
+
+    # |> IO.inspect(label: "asdf")
   end
 
   def from_introspection(result, _schema) do

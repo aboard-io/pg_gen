@@ -1,9 +1,9 @@
-defmodule AbsintheGen.MixProject do
+defmodule PgGen.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :absinthe_gen,
+      app: :pg_gen,
       version: "0.1.0",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,

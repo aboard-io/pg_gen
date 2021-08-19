@@ -6,8 +6,8 @@ defmodule Introspection do
   https://github.com/graphile/graphile-engine/blob/v4/packages/graphile-build-pg/src/plugins/PgIntrospectionPlugin.js
   """
 
-  def run(db_name, schemas) do
-    introspection_results_by_kind = run_introspection(schemas, db_name)
+  def run(db_config, schemas) do
+    introspection_results_by_kind = run_introspection(schemas, db_config)
 
     known_schemas =
       introspection_results_by_kind["namespace"]
@@ -35,10 +35,10 @@ defmodule Introspection do
     end
   end
 
-  def run_introspection(schemas, db_name) do
-    server_version_num = get_version_number()
+  def run_introspection(schemas, db_options) do
+    server_version_num = get_version_number(db_options)
     introspection_query = Introspection.Query.make_introspection_query(server_version_num)
-    %{rows: rows} = run_query(introspection_query, db_name, [schemas, false])
+    %{rows: rows} = run_query(introspection_query, db_options, [schemas, false])
     rows = Enum.map(rows, fn [row] -> row end)
 
     result =
@@ -98,13 +98,20 @@ defmodule Introspection do
     # https://github.com/graphile/graphile-engine/blob/v4/packages/graphile-build-pg/src/plugins/PgIntrospectionPlugin.js#L736
   end
 
-  def get_version_number do
-    %{rows: [[version]]} = run_query("show server_version_num;", "")
+  def get_version_number(db_options) do
+    %{rows: [[version]]} = run_query("show server_version_num;", db_options)
     version |> String.to_integer()
   end
 
-  def run_query(query, db_name, args \\ []) do
-    {:ok, pid} = Postgrex.start_link(username: "ap", database: db_name)
+  def run_query(query, db_options, args \\ []) do
+    {:ok, pid} =
+      Postgrex.start_link(
+        hostname: db_options.hostname,
+        database: db_options.database,
+        username: db_options.username,
+        password: db_options.password
+      )
+
     Postgrex.query!(pid, query, args)
   end
 

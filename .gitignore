@@ -26,3 +26,5 @@ absinthe_gen-*.tar
 /tmp/
 
 /static
+
+/example
