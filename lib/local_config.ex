@@ -33,4 +33,8 @@ defmodule PgGen.LocalConfig do
     fragment = get_app_name() |> Macro.underscore()
     "lib/#{fragment}/models"
   end
+  def get_graphql_schema_path do
+    fragment = get_app_name() |> Macro.underscore()
+    "lib/#{fragment}_web/schema"
+  end
 end
