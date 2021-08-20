@@ -11,7 +11,7 @@ defmodule EctoGen.FieldGenerator do
 
   def generate(%{constraints: constraints} = attribute) do
     case get_reference_constraint(constraints) do
-      nil -> {:field, generate_field(attribute), generate_type(attribute)}
+      nil -> {:field, generate_field(attribute), generate_type(attribute), generate_field_options(attribute)}
       constraint -> generate_reference_type(constraint, attribute)
     end
   end
@@ -83,7 +83,7 @@ defmodule EctoGen.FieldGenerator do
 
   def generate_field(%{name: name}), do: name
 
-  def generate_type(%{type: %{name: name}}) do
+  def generate_type(%{type: %{name: name, enum_variants: nil}}) do
     name = String.replace(name, ~r/^[_]/, "")
     type = @type_map[name] || name
 
@@ -91,6 +91,13 @@ defmodule EctoGen.FieldGenerator do
       true -> type
       false -> ":#{type}"
     end
+  end
+  def generate_type(%{type: %{enum_variants: _enum_variants}}) do
+    "Ecto.Enum"
+  end
+  def generate_field_options(%{type: %{enum_variants: nil}}), do: []
+  def generate_field_options(%{type: %{enum_variants: enum_variants}}) do
+    [values: enum_variants]
   end
 
   def generate_reference_type(
@@ -124,22 +131,27 @@ defmodule EctoGen.FieldGenerator do
     |> Enum.into([])
   end
 
-  def to_string({:field, "id", _type}) do
+  @doc """
+  ID fields are inferred; Ecto doesn't want them in the schema
+  """
+  def to_string({:field, "id", _type, _options}) do
     ""
   end
 
-  def to_string({:field, name, type}) do
-    case String.match?(type, ~r/(types?|role|vector)$/) do
+  def to_string({:field, name, type, options}) do
+    case String.match?(type, ~r/(vector)$/) do
       true ->
         IO.puts("""
         Fix this to_string for field: #{name}: #{type}
-        # See https://dennisbeatty.com/use-the-new-enum-type-in-ecto-3-5.html
+        # See https://www.reddit.com/r/elixir/comments/72z762/how_to_use_postgrex_extension_to_create_an_ecto/
+        #     https://hexdocs.pm/ecto/Ecto.Type.html
         """)
 
         ""
 
       false ->
         "field :#{name}, #{type}"
+        |> process_options(options)
     end
   end
 
@@ -167,6 +179,8 @@ defmodule EctoGen.FieldGenerator do
   defp process_options(base, options) do
     Enum.reduce(options, base, fn {k, v}, acc ->
       case k do
+        :values ->
+          "#{acc}, values: [#{Enum.map(v, &(":#{&1}")) |> Enum.join(", ")}]"
         :fk ->
           "#{acc}, foreign_key: :#{v}"
 

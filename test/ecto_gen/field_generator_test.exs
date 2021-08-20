@@ -16,11 +16,26 @@ defmodule EctoGen.FieldGeneratorTest do
       is_not_null: true,
       name: "id",
       num: 1,
-      type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}},
+      type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}, enum_variants: nil},
       type_id: "2950"
     }
 
-    assert FieldGenerator.generate(id_field) == {:field, "id", "Ecto.UUID"}
+    assert FieldGenerator.generate(id_field) == {:field, "id", "Ecto.UUID", []}
+  end
+
+  test "it handles an enum type" do
+    field = %{
+      constraints: [],
+      description: nil,
+      has_default: true,
+      is_not_null: true,
+      name: "enum_field",
+      num: 1,
+      type: %{category: "E", description: "Enum", name: "some_enum", enum_variants: ["foo", "bar"], tags: %{}},
+      type_id: "2950"
+    }
+
+    assert FieldGenerator.generate(field) == {:field, "enum_field", "Ecto.Enum", values: ["foo", "bar"]}
   end
 
   test "it generates a belongs_to relationship" do
@@ -284,7 +299,7 @@ defmodule EctoGen.FieldGeneratorTest do
   end
 
   test "it converts field tuple to string" do
-    assert FieldGenerator.to_string({:field, "name", ":string"}) ==
+    assert FieldGenerator.to_string({:field, "name", ":string", []}) ==
              "field :name, :string"
   end
 
@@ -301,6 +316,12 @@ defmodule EctoGen.FieldGeneratorTest do
   test "it sets reference id if it's not id" do
     assert FieldGenerator.to_string({:belongs_to, "workflows", "Workflow", ref: "uuid"}) ==
              "belongs_to :workflows, Workflow, references: :uuid"
+  end
+
+  test "it converts enum type to string" do
+
+    assert FieldGenerator.to_string({:field, "enum_field", "Ecto.Enum", values: ["foo", "bar"]}) ==
+             "field :enum_field, Ecto.Enum, values: [:foo, :bar]"
   end
 
   test "it converts has_many to string" do

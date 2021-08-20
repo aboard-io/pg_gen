@@ -179,6 +179,7 @@ defmodule Introspection.Model do
       |> Map.put(:tags, type["tags"])
       |> Map.put(:name, type["name"])
       |> Map.put(:category, type["category"])
+      |> Map.put(:enum_variants, type["enumVariants"])
 
     Map.put(attr, :type, my_type)
   end

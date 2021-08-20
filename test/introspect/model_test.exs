@@ -18,7 +18,8 @@ defmodule Introspection.ModelTest do
             description: "-2 billion to 2 billion integer, 4-byte storage",
             name: "int4",
             tags: %{},
-            category: "N"
+            category: "N",
+            enum_variants: nil,
           },
           type_id: "23",
           description: nil,
@@ -38,7 +39,8 @@ defmodule Introspection.ModelTest do
             description: "variable-length string, no limit specified",
             name: "text",
             category: "S",
-            tags: %{}
+            tags: %{},
+            enum_variants: nil,
           },
           type_id: "25",
           description: nil,
@@ -54,7 +56,8 @@ defmodule Introspection.ModelTest do
             description: "variable-length string, no limit specified",
             name: "text",
             category: "S",
-            tags: %{}
+            tags: %{},
+            enum_variants: nil,
           },
           type_id: "25",
           description: nil,
