@@ -21,7 +21,7 @@ defmodule PgGen.LocalConfig do
     line = "mix.exs" |> File.stream!() |> Enum.take(1)
     [name | _] = Regex.run(~r/(\S+)(?=\.)/, to_string(line))
 
-    name
+    name || ""
   end
 
   def get_repo_atom do
@@ -29,12 +29,22 @@ defmodule PgGen.LocalConfig do
     repo
   end
 
+  def get_contexts_path do
+    fragment = get_app_name() |> Macro.underscore()
+    "lib/#{fragment}/contexts"
+  end
+
   def get_repo_path do
     fragment = get_app_name() |> Macro.underscore()
-    "lib/#{fragment}/models"
+    "lib/#{fragment}/repo"
   end
+
   def get_graphql_schema_path do
     fragment = get_app_name() |> Macro.underscore()
     "lib/#{fragment}_web/schema"
+  end
+
+  def get_graphql_resolver_path do
+    "#{get_graphql_schema_path()}/resolvers"
   end
 end

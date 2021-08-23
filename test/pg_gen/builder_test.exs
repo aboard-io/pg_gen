@@ -3,11 +3,6 @@ defmodule PgGen.BuilderTest do
   doctest PgGen.Builder
   alias PgGen.Builder
 
-  # @test_table File.read!("static/parsed-stages.json") |> Jason.decode!()
-  # @test_table Introspection.run("winslow", String.split("app_public", ","))
-  #             |> Introspection.Model.from_introspection("app_public")
-  #             |> Enum.at(9)
-
   test "it parses a basic primary key id field" do
     id_field = %{
       constraints: [%{type: :primary_key}],
@@ -16,11 +11,18 @@ defmodule PgGen.BuilderTest do
       is_not_null: true,
       name: "id",
       num: 1,
-      type: %{category: "U", description: "UUID datatype", name: "uuid", tags: %{}, enum_variants: nil},
+      type: %{
+        category: "U",
+        description: "UUID datatype",
+        name: "uuid",
+        tags: %{},
+        enum_variants: nil
+      },
       type_id: "2950"
     }
 
-    assert Builder.build(id_field) == {:field, "id", "Ecto.UUID", []}
+    assert Builder.build(id_field) ==
+             {:field, "id", "uuid", [is_not_null: true, has_default: true]}
   end
 
   test "it handles an enum type" do
@@ -31,11 +33,19 @@ defmodule PgGen.BuilderTest do
       is_not_null: true,
       name: "enum_field",
       num: 1,
-      type: %{category: "E", description: "Enum", name: "some_enum", enum_variants: ["foo", "bar"], tags: %{}},
+      type: %{
+        category: "E",
+        description: "Enum",
+        name: "some_enum",
+        enum_variants: ["foo", "bar"],
+        tags: %{}
+      },
       type_id: "2950"
     }
 
-    assert Builder.build(field) == {:field, "enum_field", "Ecto.Enum", values: ["foo", "bar"]}
+    assert Builder.build(field) ==
+             {:field, "enum_field", "enum",
+              is_not_null: true, has_default: true, values: ["foo", "bar"], enum_name: "some_enum"}
   end
 
   test "it generates a belongs_to relationship" do
@@ -298,4 +308,3 @@ defmodule PgGen.BuilderTest do
     )
   end
 end
-

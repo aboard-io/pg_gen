@@ -11,15 +11,22 @@ defmodule Introspection.ModelTest do
       id: "233794",
       name: "users",
       description: nil,
+      insertable: true,
+      selectable: true,
+      updatable: true,
+      deletable: true,
       attributes: [
         %{
           name: "id",
+          insertable: true,
+          selectable: true,
+          updatable: true,
           type: %{
             description: "-2 billion to 2 billion integer, 4-byte storage",
             name: "int4",
             tags: %{},
             category: "N",
-            enum_variants: nil,
+            enum_variants: nil
           },
           type_id: "23",
           description: nil,
@@ -35,12 +42,15 @@ defmodule Introspection.ModelTest do
         },
         %{
           name: "name",
+          insertable: true,
+          selectable: true,
+          updatable: true,
           type: %{
             description: "variable-length string, no limit specified",
             name: "text",
             category: "S",
             tags: %{},
-            enum_variants: nil,
+            enum_variants: nil
           },
           type_id: "25",
           description: nil,
@@ -52,12 +62,15 @@ defmodule Introspection.ModelTest do
         },
         %{
           name: "email",
+          insertable: true,
+          selectable: true,
+          updatable: true,
           type: %{
             description: "variable-length string, no limit specified",
             name: "text",
             category: "S",
             tags: %{},
-            enum_variants: nil,
+            enum_variants: nil
           },
           type_id: "25",
           description: nil,
@@ -77,7 +90,7 @@ defmodule Introspection.ModelTest do
 
     schema = "app_public"
 
-    assert(Model.from_introspection(@user_introspection_result, schema) |> hd == expected)
+    assert(Model.from_introspection(@user_introspection_result, schema).tables |> hd == expected)
   end
 
   test "foreign key constraint" do

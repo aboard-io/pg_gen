@@ -3,36 +3,70 @@ defmodule EctoGen.TableGenerator do
   alias EctoGen.FieldGenerator
 
   def generate(%{name: name, attributes: attributes} = table, schema) do
-    IO.puts("====================#{name}===============")
-
     attributes =
       attributes
       |> Enum.map(&Builder.build/1)
-      |> Utils.deduplicate_associations
+      |> Utils.deduplicate_associations()
+
+    required_fields =
+      attributes
+      |> Enum.filter(&is_required/1)
+      |> Enum.map(fn {_, name, _, _} -> ":#{name}" end)
+
+    all_fields =
+      attributes
+      |> Enum.map(fn {_, name, _, _} -> ":#{name}" end)
+
+    attribute_string =
+      attributes
       |> Enum.map(&FieldGenerator.to_string/1)
       |> Enum.sort()
       |> Enum.reverse()
       |> Enum.join("\n")
 
-    references =
+    belongs_to_aliases =
+      attributes
+      |> Enum.filter(fn {type, _, _, _} -> type == :belongs_to end)
+      |> Enum.map(fn {_, _, alias, _} -> alias end)
+
+    {references, aliases} =
       case Map.get(table, :external_references) do
         nil ->
-          ""
+          {"", []}
 
         references ->
-          references
-          |> Enum.map(&Builder.build/1)
-          |> Utils.deduplicate_associations
-          |> Utils.deduplicate_joins
-          |> Enum.map(&FieldGenerator.to_string/1)
-          |> Enum.sort()
-          |> Enum.join("\n")
+          built_references =
+            references
+            |> Enum.map(&Builder.build/1)
+            |> Utils.deduplicate_associations()
+            |> Utils.deduplicate_joins()
+
+          aliases =
+            built_references
+            |> Enum.map(fn {_, _, alias, _} -> alias end)
+            |> Enum.uniq()
+
+          references =
+            built_references
+            |> Enum.map(&FieldGenerator.to_string/1)
+            |> Enum.sort()
+            |> Enum.join("\n")
+
+          {references, aliases}
       end
+
+    aliases =
+      (belongs_to_aliases ++ aliases)
+      |> Enum.uniq()
+      |> Enum.join(", ")
+
+    app_name = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
+    singular_lowercase = Inflex.singularize(name)
 
     {name,
      Code.format_string!(
        """
-       defmodule #{Inflex.singularize(name) |> Macro.camelize()} do
+       defmodule #{app_name}.Repo.#{Inflex.singularize(name) |> Macro.camelize()} do
          #{if !is_nil(table.description) do
          """
          @moduledoc \"\"\"
@@ -41,6 +75,9 @@ defmodule EctoGen.TableGenerator do
          """
        end}
          use Ecto.Schema
+         import Ecto.Changeset
+
+         alias #{app_name}.Repo.{#{aliases}}
 
 
 
@@ -52,7 +89,7 @@ defmodule EctoGen.TableGenerator do
 
 
          schema "#{name}" do
-           #{attributes}
+           #{attribute_string}
 
            #{if String.trim(references) != "" do
          """
@@ -60,6 +97,20 @@ defmodule EctoGen.TableGenerator do
          #{references}
          """
        end}
+
+            # Changeset
+              def changeset(#{singular_lowercase}, attrs) do
+                fields = [#{Enum.join(all_fields, ", ")}]
+                required_fields = [#{Enum.join(required_fields, ", ")}]
+                
+                #{singular_lowercase}
+                |> cast(attrs, fields)
+                |> validate_required(required_fields)
+                # TODO should we support unique constraints in ecto
+                # or just let Postgres do it?
+                # |> unique_constraint(:email)
+              end
+
          end
        end
        """,
@@ -114,5 +165,9 @@ defmodule EctoGen.TableGenerator do
       def dump(_), do: :error
     end
     """
+  end
+
+  def is_required({_, _, _, opts}) do
+    Keyword.get(opts, :is_not_null, false) && !Keyword.get(opts, :has_default)
   end
 end

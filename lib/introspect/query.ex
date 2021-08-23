@@ -11,7 +11,7 @@ defmodule Introspection.Query do
 
   def make_introspection_query(
         server_version_num \\ 110_000,
-        options \\ %{pg_legacy_functions_only: false, pg_ignore_rbac: true}
+        options \\ %{pg_legacy_functions_only: false, pg_ignore_rbac: false}
       )
       when is_number(server_version_num) do
     %{

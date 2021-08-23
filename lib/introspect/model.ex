@@ -22,11 +22,15 @@ defmodule Introspection.Model do
         x -> [x]
       end)
 
-    add_references_to_foriegn_tables(
-      tables,
-      references
-    )
+    enum_types = lift_types(tables)
 
+    tables =
+      add_references_to_foriegn_tables(
+        tables,
+        references
+      )
+
+    %{tables: tables, enum_types: enum_types}
     # |> IO.inspect(label: "asdf")
   end
 
@@ -35,8 +39,24 @@ defmodule Introspection.Model do
     IO.puts("Hmm")
   end
 
-  def build_table_objects(%{"id" => id, "name" => name, "description" => description}) do
-    %{id: id, name: name, description: description}
+  def build_table_objects(%{
+        "id" => id,
+        "name" => name,
+        "description" => description,
+        "aclInsertable" => acl_insertable,
+        "aclSelectable" => acl_selectable,
+        "aclUpdatable" => acl_updatable,
+        "aclDeletable" => acl_deletable
+      }) do
+    %{
+      id: id,
+      name: name,
+      description: description,
+      insertable: acl_insertable,
+      selectable: acl_selectable,
+      updatable: acl_updatable,
+      deletable: acl_deletable
+    }
   end
 
   @doc """
@@ -90,27 +110,30 @@ defmodule Introspection.Model do
     attributes =
       attributes
       |> Enum.filter(fn attr -> attr["classId"] == table_id end)
-      |> Enum.map(fn %{
-                       "aclInsertable" => true,
-                       "aclSelectable" => true,
-                       "aclUpdatable" => true,
-                       "columnLevelSelectGrant" => false,
-                       "identity" => "",
-                       "kind" => "attribute",
-                       "typeModifier" => nil
-                     } = attr ->
-        %{
-          name: attr["name"],
-          description: attr["description"],
-          num: attr["num"],
-          is_not_null: attr["isNotNull"],
-          has_default: attr["hasDefault"],
-          type_id: attr["typeId"],
-          type: nil,
-          constraints: nil,
-          parent_table: %{name: table_name, id: table_id}
-        }
-      end)
+      |> Enum.map(
+        # "columnLevelSelectGrant" => ?,
+        # atttypmod/typeModifier records type-specific data supplied at table creation time (for example, the maximum length of a varchar column). It is passed to type-specific input functions and length coercion functions. The value will generally be -1 for types that do not need atttypmod
+        # currently ignoring this in the implementation
+        # "typeModifier" => type_modifier
+        fn %{
+             "kind" => "attribute"
+           } = attr ->
+          %{
+            insertable: attr["aclInsertable"],
+            selectable: attr["aclSelectable"],
+            updatable: attr["aclUpdatable"],
+            name: attr["name"],
+            description: attr["description"],
+            num: attr["num"],
+            is_not_null: attr["isNotNull"],
+            has_default: attr["hasDefault"],
+            type_id: attr["typeId"],
+            type: nil,
+            constraints: nil,
+            parent_table: %{name: table_name, id: table_id}
+          }
+        end
+      )
       |> Enum.map(fn attr -> add_type_for_attribute(attr, introspection_result["type"]) end)
       |> Enum.map(fn attr ->
         add_constraints_for_attribute(
@@ -281,23 +304,30 @@ defmodule Introspection.Model do
       |> Enum.into(%{})
 
     Enum.reduce(references, tables_by_id, fn reference, acc ->
-      %{attributes: attrs, table: %{id: id}} = get_referenced_table(reference)
+      # if the parent table is not accessible, do not add it as a foreign reference
+      case tables_by_id[reference.parent_table.id].selectable do
+        false ->
+          acc
 
-      new_reference = %{
-        table:
-          Map.merge(reference.parent_table, %{
-            attribute: reference
-          }),
-        via: attrs
-      }
+        true ->
+          %{attributes: attrs, table: %{id: id}} = get_referenced_table(reference)
 
-      referenced_by =
-        case get_in(acc, [id, :external_references]) do
-          nil -> [new_reference]
-          existing_references -> [new_reference | existing_references]
-        end
+          new_reference = %{
+            table:
+              Map.merge(reference.parent_table, %{
+                attribute: reference
+              }),
+            via: attrs
+          }
 
-      put_in(acc, [id, :external_references], referenced_by)
+          referenced_by =
+            case get_in(acc, [id, :external_references]) do
+              nil -> [new_reference]
+              existing_references -> [new_reference | existing_references]
+            end
+
+          put_in(acc, [id, :external_references], referenced_by)
+      end
     end)
     |> Enum.map(fn {_, v} -> v end)
   end
@@ -323,5 +353,25 @@ defmodule Introspection.Model do
       x when is_list(x) -> x
       x -> [x]
     end)
+  end
+
+  def lift_types(tables) do
+    tables
+    |> Enum.map(&get_enum_types/1)
+    |> Enum.flat_map(fn
+      x when is_list(x) -> x
+      x -> [x]
+    end)
+    |> Enum.uniq()
+  end
+
+  defp get_enum_types(%{attributes: attrs, name: name}) when is_list(attrs) do
+    Enum.filter(attrs, fn attr ->
+      case attr.type[:enum_variants] do
+        nil -> false
+        _ -> true
+      end
+    end)
+    |> Enum.map(fn attr -> attr.type end)
   end
 end

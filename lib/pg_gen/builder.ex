@@ -6,8 +6,11 @@ defmodule PgGen.Builder do
 
   def build(%{constraints: constraints} = attribute) do
     case get_reference_constraint(constraints) do
-      nil -> {:field, build_field(attribute), build_type(attribute), build_field_options(attribute)}
-      constraint -> build_reference_type(constraint, attribute)
+      nil ->
+        {:field, build_field(attribute), build_type(attribute), build_field_options(attribute)}
+
+      constraint ->
+        build_reference_type(constraint, attribute)
     end
   end
 
@@ -71,20 +74,29 @@ defmodule PgGen.Builder do
   def build_field(%{name: name}), do: name
 
   def build_type(%{type: %{name: name, enum_variants: nil}}) do
-    name = String.replace(name, ~r/^[_]/, "")
-    type = EctoGen.FieldGenerator.type_map[name] || name
+    IO.puts("Need to support isPgArray for things like arrays of uuids")
+    String.replace(name, ~r/^[_]/, "")
+  end
 
-    case Regex.match?(~r/^[A-Z\{]/, type) do
-      true -> type
-      false -> ":#{type}"
-    end
-  end
   def build_type(%{type: %{enum_variants: _enum_variants}}) do
-    "Ecto.Enum"
+    "enum"
   end
-  def build_field_options(%{type: %{enum_variants: nil}}), do: []
-  def build_field_options(%{type: %{enum_variants: enum_variants}}) do
-    [values: enum_variants]
+
+  def build_field_options(%{
+        is_not_null: is_not_null,
+        has_default: has_default,
+        description: description,
+        type: %{enum_variants: enum_variants, name: name}
+      }) do
+    [
+      is_not_null: is_not_null,
+      has_default: has_default,
+      description: description,
+      values: enum_variants,
+      enum_name: if(is_nil(enum_variants), do: nil, else: name)
+    ]
+    |> Enum.filter(fn {_k, v} -> !is_nil(v) end)
+    |> Enum.into(Keyword.new())
   end
 
   def build_reference_type(
@@ -143,10 +155,10 @@ defmodule PgGen.Builder do
         (str <> "_" <> Macro.underscore(table_name)) |> Inflex.singularize()
     end
   end
+
   defp table_name_to_queryable(name), do: name |> Inflex.singularize() |> Macro.camelize()
 
   defp is_standard_foreign_key(name, table_name) do
     name == "#{Inflex.singularize(table_name)}_id"
   end
-
 end

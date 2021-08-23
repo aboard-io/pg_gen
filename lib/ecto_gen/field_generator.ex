@@ -6,7 +6,8 @@ defmodule EctoGen.FieldGenerator do
     "uuid" => "Ecto.UUID",
     "jsonb" => "EctoJSON",
     "bool" => "boolean",
-    "int4" => "integer"
+    "int4" => "integer",
+    "enum" => "Ecto.Enum"
   }
 
   @doc """
@@ -28,6 +29,14 @@ defmodule EctoGen.FieldGenerator do
         ""
 
       false ->
+        type = @type_map[type] || type
+
+        type =
+          case Regex.match?(~r/^[A-Z\{]/, type) do
+            true -> type
+            false -> ":#{type}"
+          end
+
         "field :#{name}, #{type}"
         |> process_options(options)
     end
@@ -58,7 +67,8 @@ defmodule EctoGen.FieldGenerator do
     Enum.reduce(options, base, fn {k, v}, acc ->
       case k do
         :values ->
-          "#{acc}, values: [#{Enum.map(v, &(":#{&1}")) |> Enum.join(", ")}]"
+          "#{acc}, values: [#{Enum.map(v, &":#{&1}") |> Enum.join(", ")}]"
+
         :fk ->
           "#{acc}, foreign_key: :#{v}"
 
@@ -71,6 +81,9 @@ defmodule EctoGen.FieldGenerator do
         :join_keys ->
           [{current_id, _}, {associated_id, _}] = v
           "#{acc}, join_keys: [#{current_id}: :id, #{associated_id}: :id]"
+
+        _ ->
+          acc
       end
     end)
   end

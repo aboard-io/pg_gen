@@ -4,7 +4,7 @@ defmodule EctoGen.FieldGeneratorTest do
   alias EctoGen.FieldGenerator
 
   test "it converts field tuple to string" do
-    assert FieldGenerator.to_string({:field, "name", ":string", []}) ==
+    assert FieldGenerator.to_string({:field, "name", "string", []}) ==
              "field :name, :string"
   end
 
@@ -24,7 +24,6 @@ defmodule EctoGen.FieldGeneratorTest do
   end
 
   test "it converts enum type to string" do
-
     assert FieldGenerator.to_string({:field, "enum_field", "Ecto.Enum", values: ["foo", "bar"]}) ==
              "field :enum_field, Ecto.Enum, values: [:foo, :bar]"
   end
