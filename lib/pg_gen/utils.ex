@@ -9,14 +9,14 @@ defmodule PgGen.Utils do
   If two field associations have the same name, prioritize the name with the default
   foreign key; use the non-default foreign key to name the other field
 
-  iex> EctoGen.TableGenerator.deduplicate_associations([
+  iex> PgGen.Utils.deduplicate_associations([
   ...>   {:has_many, "comments", "Comment", []},
   ...>   {:has_many, "foos", "Foo", []},
   ...>   {:has_many, "comments", "Comment", fk: "alt_comment_id"}
   ...> ])
   [{:has_many, "alt_comments", "Comment", fk: "alt_comment_id"}, {:has_many, "comments", "Comment", []}, {:has_many, "foos", "Foo", []}]
 
-  iex> EctoGen.TableGenerator.deduplicate_associations([
+  iex> PgGen.Utils.deduplicate_associations([
   ...>   {:many_to_many, "users", "User", [join_through: "objects", fk: "created_by"]},
   ...>   {:many_to_many, "users", "User", [join_through: "objects", fk: "archived_by"]}
   ...> ])
@@ -51,13 +51,14 @@ defmodule PgGen.Utils do
       end
     end)
   end
+
   @doc """
-  iex> EctoGen.TableGenerator.deduplicate_join_associations([
+  iex> PgGen.Utils.deduplicate_join_associations([
   ...> {:many_to_many, "objects", "Object", join_through: "attachments"},
   ...> {:many_to_many, "objects", "Object", join_through: "object_activity_events"}
   ...> ], 1)
-  [{:many_to_many, "attachment_objects", "Object", join_through: "attachments"},
-  {:many_to_many, "object_activity_event_objects", "Object", join_through: "object_activity_events"}]
+  [{:many_to_many, "objects_by_attachments", "Object", join_through: "attachments"},
+  {:many_to_many, "objects_by_object_activity_events", "Object", join_through: "object_activity_events"}]
 
   """
   def deduplicate_join_associations(attributes, attempt) do
@@ -80,7 +81,7 @@ defmodule PgGen.Utils do
               case attempt do
                 1 ->
                   {relationship,
-                   Builder.format_assoc(Inflex.singularize(join_through), table_name)
+                   Builder.format_assoc(table_name <> "_by", join_through)
                    |> Inflex.pluralize(), queryable, opts}
 
                 2 ->
@@ -94,7 +95,7 @@ defmodule PgGen.Utils do
                           tuple
 
                         [{prefix, _}, _] ->
-                          {relationship, prefix <> "_" <> assoc, queryable, opts}
+                          {relationship, assoc <> "_by_" <> prefix, queryable, opts}
                       end
                   end
               end

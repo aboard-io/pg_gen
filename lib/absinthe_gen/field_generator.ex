@@ -27,10 +27,9 @@ defmodule AbsintheGen.FieldGenerator do
     |> process_options(options, "list_of(non_null(#{process_type(type, options)}))", type)
   end
 
-  def to_string(_) do
-    "# Ignore many_to_many for now"
-    # "field :#{Inflex.pluralize(name)}, "
-    # |> process_options(options, "list_of(non_null(#{process_type(type)}))", type)
+  def to_string({:many_to_many, name, type, options}) do
+    "field :#{name}, "
+    |> process_options(options, "list_of(non_null(#{process_type(type, options)}))", type)
   end
 
   def process_type("enum", options) do
