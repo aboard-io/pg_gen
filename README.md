@@ -34,7 +34,7 @@ mix pg_gen.generate_absinthe --schema app_public
 The code is not always pretty. I've been spelunking a lot, but it's been pretty
 interesting and fun. Please feel free to play around, submit PRs, etc.
 
-Things currently on my to-do list:
+## Things currently on my to-do list:
 
 - [ ] Mutations for the Absinthe schema. Currently only supports read.
 - [ ] Cursor-based pagination
@@ -62,7 +62,7 @@ Things currently on my to-do list:
       config or override code that allows you to provide your own resolver for a
       specific field, etc. Similar to above.
 - [ ] A version that doesn't generate/write code to files, but instead just
-      mounts an engine that dynamically updates (and could hot reload in dev mode.
+      mounts an engine that dynamically updates (and could hot reload in dev mode).
       José Valim's answer to [this StackOverflow
       question](https://stackoverflow.com/questions/13223238/how-do-you-create-and-load-modules-dynamically-at-runtime-in-elixir-or-erlang)
       lays out how this could work. It doesn't seem that difficult tbh, and would
