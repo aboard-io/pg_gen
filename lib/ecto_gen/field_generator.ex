@@ -17,6 +17,11 @@ defmodule EctoGen.FieldGenerator do
     ""
   end
 
+  def to_string({:field, name, {:array, type}, options}) do
+    options = Keyword.put(options, :array_type, true)
+    EctoGen.FieldGenerator.to_string({:field, name, type, options})
+  end
+
   def to_string({:field, name, type, options}) do
     case String.match?(type, ~r/(vector)$/) do
       true ->
@@ -35,6 +40,15 @@ defmodule EctoGen.FieldGenerator do
           case Regex.match?(~r/^[A-Z\{]/, type) do
             true -> type
             false -> ":#{type}"
+          end
+
+        {is_array_type, options} = Keyword.pop(options, :array_type, false)
+
+        type =
+          if is_array_type do
+            "{:array, #{type}}"
+          else
+            type
           end
 
         "field :#{name}, #{type}"

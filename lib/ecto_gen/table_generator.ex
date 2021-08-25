@@ -15,7 +15,13 @@ defmodule EctoGen.TableGenerator do
 
     all_fields =
       attributes
-      |> Enum.map(fn {_, name, _, _} -> ":#{name}" end)
+      |> Enum.map(fn {field_or_assoc, name, _, options} ->
+        case field_or_assoc do
+          :field -> ":#{name}"
+          :belongs_to -> ":#{options[:fk] || name <> "_id"}"
+          type -> raise "Ooops didn't handle this attribute type# #{type}"
+        end
+      end)
 
     attribute_string =
       attributes

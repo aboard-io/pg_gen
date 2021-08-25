@@ -66,6 +66,19 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
       |> Enum.map(&SchemaGenerator.generate_queries/1)
       |> Enum.join("\n\n")
 
+    mutation_and_input_defs =
+      filtered_tables
+      |> Enum.map(&SchemaGenerator.generate_mutations/1)
+
+    {mutations, inputs} =
+      mutation_and_input_defs
+      |> Enum.reduce({[], []}, fn [mutation, input], {mut, inp} = acc ->
+        {[mutation | mut], [input | inp]}
+      end)
+
+    mutation_strings = Enum.join(mutations, "\n\n")
+    input_strings = Enum.join(inputs, "\n\n")
+
     dataloader_strings =
       filtered_tables
       |> SchemaGenerator.generate_dataloader()
@@ -75,7 +88,14 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
     # end)
     File.write!(
       "#{file_path}/types.ex",
-      SchemaGenerator.types_template(def_strings, enum_defs, query_defs, dataloader_strings)
+      SchemaGenerator.types_template(
+        def_strings,
+        enum_defs,
+        query_defs,
+        dataloader_strings,
+        mutation_strings,
+        input_strings
+      )
       |> Code.format_string!()
     )
 

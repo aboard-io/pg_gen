@@ -38,6 +38,10 @@ defmodule AbsintheGen.FieldGenerator do
 
   def process_type(":" <> type, options), do: process_type(type, options)
 
+  def process_type({:array, type}, options) do
+    "list_of(#{process_type(@type_map[type] || type, options)})"
+  end
+
   def process_type(type, _options) do
     ":" <> (type |> Inflex.singularize() |> Macro.underscore())
   end
@@ -93,4 +97,6 @@ defmodule AbsintheGen.FieldGenerator do
       end
     end)
   end
+
+  def type_map, do: @type_map
 end

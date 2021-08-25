@@ -73,9 +73,12 @@ defmodule PgGen.Builder do
 
   def build_field(%{name: name}), do: name
 
+  def build_type(%{type: %{name: name, category: "A"}}) do
+    {:array, String.replace(name, ~r/^[_]/, "")}
+  end
+
   def build_type(%{type: %{name: name, enum_variants: nil}}) do
-    IO.puts("Need to support isPgArray for things like arrays of uuids")
-    String.replace(name, ~r/^[_]/, "")
+    name
   end
 
   def build_type(%{type: %{enum_variants: _enum_variants}}) do

@@ -82,7 +82,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def types_template(types, enum_types, query_defs, dataloader) do
+  def types_template(types, enum_types, query_defs, dataloader, mutations, inputs) do
     module_name = "#{PgGen.LocalConfig.get_app_name() |> Macro.camelize()}"
     module_name_web = "#{module_name}Web"
 
@@ -106,43 +106,140 @@ defmodule AbsintheGen.SchemaGenerator do
         #{query_defs}
       end
 
+      mutation do
+        #{mutations}
+      end
+
+      #{inputs}
+
       #{dataloader}
 
     end
     """
   end
 
-  def generate_queries(
-        %{
-          name: name,
-          selectable: selectable,
-          updatable: updatable,
-          insertable: insertable,
-          deletable: deletable
-        } = table
-      ) do
+  def generate_queries(table) do
     generate_selectable(table)
   end
 
-  def generate_selectable(%{selectable: true, name: name} = table) do
-    %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
-      get_table_names(name)
+  def generate_mutations(table) do
+    generate_insertable(table)
+  end
 
-    singular_lowercase = Inflex.singularize(lower_case_table_name)
+  def generate_selectable(%{selectable: true, name: name}) do
+    %{
+      singular_camelized_table_name: singular_camelized_table_name,
+      plural_underscore_table_name: plural_underscore_table_name,
+      singular_underscore_table_name: singular_underscore_table_name
+    } = get_table_names(name)
 
     """
-    field :#{singular_lowercase}, :#{singular_lowercase} do
+    field :#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
       arg :id, non_null(:id)
-      resolve &Resolvers.#{table_name}.#{singular_lowercase}/3
-      # resolve &Resolvers.Vacation.place/3
+      resolve &Resolvers.#{singular_camelized_table_name}.#{singular_underscore_table_name}/3
     end
-    field :#{lower_case_table_name}, list_of(non_null(:#{singular_lowercase})) do
-      resolve &Resolvers.#{table_name}.#{lower_case_table_name}/3
+    field :#{plural_underscore_table_name}, list_of(non_null(:#{singular_underscore_table_name})) do
+      resolve &Resolvers.#{singular_camelized_table_name}.#{plural_underscore_table_name}/3
     end
     """
   end
 
   def generate_selectable(_), do: ""
+
+  def generate_insertable(%{insertable: true, name: name} = table) do
+    %{
+      singular_underscore_table_name: singular_underscore_table_name
+    } = table_names = get_table_names(name)
+
+    input_name = "create_#{singular_underscore_table_name}_input"
+    input_object = generate_input_object(input_name, table.attributes)
+
+    mutation = generate_create_mutation(table_names, input_name)
+
+    [mutation, input_object]
+  end
+
+  def generate_insertable(_), do: ["", ""]
+
+  def generate_create_mutation(
+        %{
+          singular_camelized_table_name: singular_camelized_table_name,
+          singular_underscore_table_name: singular_underscore_table_name
+        },
+        input_name
+      ) do
+    app_name = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
+
+    """
+    field :create_#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
+      arg :input, non_null(:#{input_name})
+      # TODO move this callback to the resolver
+      resolve fn _, %{input: input}, _ -> #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) end
+    end
+    """
+  end
+
+  def get_fields(attributes) do
+    attributes
+    |> Enum.filter(&is_not_primary_key/1)
+  end
+
+  def generate_input_object(input_object_name, attributes) do
+    fields =
+      attributes
+      |> get_fields
+      |> Enum.map(&generate_field/1)
+      |> Enum.join("\n")
+
+    """
+    input_object :#{input_object_name} do
+      #{fields}
+    end
+    """
+  end
+
+  def generate_field(%{name: name, has_default: has_default, is_not_null: is_not_null, type: type}) do
+    "field :#{name}, #{process_type(type, has_default, is_not_null)}"
+  end
+
+  def process_type(%{name: _name} = type) do
+    case Builder.build_type(%{type: type}) do
+      {:array, type} ->
+        IO.puts("it's an array type")
+        IO.inspect(type)
+        IO.inspect(FieldGenerator.type_map()[type] || type)
+        "list_of(:#{FieldGenerator.type_map()[type] || type})"
+
+      "enum" ->
+        ":#{type.name}"
+
+      type ->
+        ":#{FieldGenerator.type_map()[type] || type}"
+    end
+  end
+
+  def process_type(type, false = _has_default, true = _is_not_null),
+    do: "non_null(#{process_type(type)})"
+
+  def process_type(type, _, _), do: process_type(type)
+
+  @doc """
+  Checks if the current attribute is the primary key for this table.
+
+  Don't want to include primary key in "create" input.
+  """
+  def is_not_primary_key(%{constraints: constraints} = attr) do
+    if is_foreign_key(attr) do
+      true
+    else
+      !(constraints |> Enum.member?(%{type: :primary_key}))
+    end
+  end
+
+  def is_foreign_key(%{constraints: constraints}) do
+    !(Enum.find(constraints, fn %{type: type} -> type == :foreign_key end)
+      |> is_nil)
+  end
 
   def generate_resolver(name) do
     {name, Code.format_string!(resolver_template(PgGen.LocalConfig.get_app_name(), name))}
@@ -196,9 +293,14 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def get_table_names(name) do
+    singular = Inflex.singularize(name)
+    plural = Inflex.pluralize(name)
+
     %{
-      table_name: name |> Inflex.singularize() |> Macro.camelize(),
-      lower_case_table_name: String.downcase(name)
+      singular_camelized_table_name: Macro.camelize(singular),
+      plural_camelized_table_name: Macro.underscore(plural),
+      singular_underscore_table_name: Macro.underscore(singular),
+      plural_underscore_table_name: Macro.underscore(plural)
     }
   end
 end
