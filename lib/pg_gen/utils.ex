@@ -5,6 +5,23 @@ defmodule PgGen.Utils do
 
   alias PgGen.Builder
 
+  def format_code!(code_str) do
+    Code.format_string!(code_str,
+      locals_without_parens: [
+        field: :*,
+        belongs_to: :*,
+        has_many: :*,
+        has_one: :*,
+        many_to_many: :*,
+        object: :*,
+        arg: :*,
+        resolve: :*,
+        value: :*,
+        enum: :*
+      ]
+    )
+  end
+
   @doc """
   If two field associations have the same name, prioritize the name with the default
   foreign key; use the non-default foreign key to name the other field

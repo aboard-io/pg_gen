@@ -1,4 +1,6 @@
 defmodule EctoGen.ContextGenerator do
+  alias PgGen.Utils
+
   def generate({:enum_types, _}, _) do
     nil
   end
@@ -36,17 +38,7 @@ defmodule EctoGen.ContextGenerator do
     end
     """
 
-    {name,
-     Code.format_string!(
-       module,
-       locals_without_parens: [
-         field: :*,
-         belongs_to: :*,
-         has_many: :*,
-         has_one: :*,
-         many_to_many: :*
-       ]
-     )}
+    {name, Utils.format_code!(module)}
   end
 
   def generate_selectable(%{selectable: true, name: name}) do

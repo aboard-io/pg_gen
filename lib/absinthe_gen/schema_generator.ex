@@ -43,19 +43,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     fields = attributes <> "\n\n" <> references
 
-    {name,
-     Code.format_string!(simple_types_template(name, fields),
-       locals_without_parens: [
-         field: :*,
-         belongs_to: :*,
-         has_many: :*,
-         has_one: :*,
-         many_to_many: :*,
-         object: :*,
-         value: :*,
-         enum: :*
-       ]
-     )}
+    {name, Utils.format_code!(simple_types_template(name, fields))}
   end
 
   def filter_accessible(tables) do
@@ -311,7 +299,7 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_resolver(name, table) do
-    {name, Code.format_string!(resolver_template(PgGen.LocalConfig.get_app_name(), name, table))}
+    {name, Utils.format_code!(resolver_template(PgGen.LocalConfig.get_app_name(), name, table))}
   end
 
   def resolver_template(app_name, name, table) do

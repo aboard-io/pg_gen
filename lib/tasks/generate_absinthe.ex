@@ -1,6 +1,7 @@
 defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
   use Mix.Task
   alias AbsintheGen.{SchemaGenerator, EnumGenerator}
+  alias PgGen.Utils
 
   @doc """
   Generate Absinthe schema
@@ -110,7 +111,7 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
         mutation_strings,
         input_strings
       )
-      |> Code.format_string!()
+      |> Utils.format_code!()
     )
 
     resolver_path = PgGen.LocalConfig.get_graphql_resolver_path()

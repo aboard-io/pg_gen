@@ -70,64 +70,55 @@ defmodule EctoGen.TableGenerator do
     singular_lowercase = Inflex.singularize(name)
 
     {name,
-     Code.format_string!(
+     Utils.format_code!("""
+     defmodule #{app_name}.Repo.#{Inflex.singularize(name) |> Macro.camelize()} do
+       #{if !is_nil(table.description) do
        """
-       defmodule #{app_name}.Repo.#{Inflex.singularize(name) |> Macro.camelize()} do
-         #{if !is_nil(table.description) do
-         """
-         @moduledoc \"\"\"
-         #{table.description}
-         \"\"\"
-         """
-       end}
-         use Ecto.Schema
-         import Ecto.Changeset
+       @moduledoc \"\"\"
+       #{table.description}
+       \"\"\"
+       """
+     end}
+       use Ecto.Schema
+       import Ecto.Changeset
 
-         alias #{app_name}.Repo.{#{aliases}}
+       alias #{app_name}.Repo.{#{aliases}}
 
 
 
-         @schema_prefix "#{schema}"
-         # TODO all our primary keys are UUIDs; would be better
-         # to make this optional
-         @primary_key {:id, Ecto.UUID, autogenerate: false}
-         @foreign_key_type :binary_id
+       @schema_prefix "#{schema}"
+       # TODO all our primary keys are UUIDs; would be better
+       # to make this optional
+       @primary_key {:id, Ecto.UUID, autogenerate: false}
+       @foreign_key_type :binary_id
 
 
-         schema "#{name}" do
-           #{attribute_string}
+       schema "#{name}" do
+         #{attribute_string}
 
-           #{if String.trim(references) != "" do
-         """
-         # Relations
-         #{references}
-         """
-       end}
+         #{if String.trim(references) != "" do
+       """
+       # Relations
+       #{references}
+       """
+     end}
 
-            # Changeset
-              def changeset(#{singular_lowercase}, attrs) do
-                fields = [#{Enum.join(all_fields, ", ")}]
-                required_fields = [#{Enum.join(required_fields, ", ")}]
-                
-                #{singular_lowercase}
-                |> cast(attrs, fields)
-                |> validate_required(required_fields)
-                # TODO should we support unique constraints in ecto
-                # or just let Postgres do it?
-                # |> unique_constraint(:email)
-              end
+          # Changeset
+            def changeset(#{singular_lowercase}, attrs) do
+              fields = [#{Enum.join(all_fields, ", ")}]
+              required_fields = [#{Enum.join(required_fields, ", ")}]
+              
+              #{singular_lowercase}
+              |> cast(attrs, fields)
+              |> validate_required(required_fields)
+              # TODO should we support unique constraints in ecto
+              # or just let Postgres do it?
+              # |> unique_constraint(:email)
+            end
 
-         end
        end
-       """,
-       locals_without_parens: [
-         field: :*,
-         belongs_to: :*,
-         has_many: :*,
-         has_one: :*,
-         many_to_many: :*
-       ]
-     )}
+     end
+     """)}
   end
 
   def ecto_json_type do
