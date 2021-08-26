@@ -36,7 +36,7 @@ interesting and fun. Please feel free to play around, submit PRs, etc.
 
 ## Things currently on my to-do list:
 
-- [ ] Mutations for the Absinthe schema. Currently only supports read.
+- [x] Mutations for the Absinthe schema. Currently only supports read.
 - [ ] Cursor-based pagination
 - [ ] Not relay support, but support for the `nodes` structure Postgraphile supports. E.g.,
 
@@ -57,7 +57,7 @@ interesting and fun. Please feel free to play around, submit PRs, etc.
   ```
 
 - [ ] Options for how codegen works. E.g., optional resolve methods. Right now
-      I'm just using `dataloader`, which helps batch queries and avoids N+1.
+      I'm just using `dataloader`, which helps batch db queries and avoids N+1.
 - [ ] Overrides/customization. E.g., it'd be nice to be able to write some
       config or override code that allows you to provide your own resolver for a
       specific field, etc. Similar to above.

@@ -66,18 +66,32 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
       |> Enum.map(&SchemaGenerator.generate_queries/1)
       |> Enum.join("\n\n")
 
-    mutation_and_input_defs =
+    create_mutation_and_input_defs =
       filtered_tables
-      |> Enum.map(&SchemaGenerator.generate_mutations/1)
+      |> Enum.map(&SchemaGenerator.generate_insertable/1)
 
-    {mutations, inputs} =
-      mutation_and_input_defs
-      |> Enum.reduce({[], []}, fn [mutation, input], {mut, inp} = acc ->
+    {create_mutations, create_inputs} =
+      create_mutation_and_input_defs
+      |> Enum.reduce({[], []}, fn [mutation, input], {mut, inp} ->
         {[mutation | mut], [input | inp]}
       end)
 
-    mutation_strings = Enum.join(mutations, "\n\n")
-    input_strings = Enum.join(inputs, "\n\n")
+    update_mutation_and_input_defs =
+      filtered_tables
+      |> Enum.map(&SchemaGenerator.generate_updatable/1)
+
+    {update_mutations, update_inputs} =
+      update_mutation_and_input_defs
+      |> Enum.reduce({[], []}, fn [mutation, input], {mut, inp} ->
+        {[mutation | mut], [input | inp]}
+      end)
+
+    delete_mutations =
+      filtered_tables
+      |> Enum.map(&SchemaGenerator.generate_deletable/1)
+
+    mutation_strings = Enum.join(create_mutations ++ update_mutations ++ delete_mutations, "\n\n")
+    input_strings = Enum.join(create_inputs ++ update_inputs, "\n\n")
 
     dataloader_strings =
       filtered_tables
@@ -106,29 +120,20 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
     end
 
     type_defs
-    |> Enum.map(fn {name, _} -> SchemaGenerator.generate_resolver(name) end)
+    |> Enum.map(fn {name, _} ->
+      SchemaGenerator.generate_resolver(
+        name,
+        Enum.find(filtered_tables, fn %{name: t_name} ->
+          t_name == name
+        end)
+      )
+    end)
     |> Enum.map(fn {name, file} -> File.write!("#{resolver_path}/#{name}.ex", file) end)
 
     module_name = "#{PgGen.LocalConfig.get_app_name()}_web.Schema" |> Macro.camelize()
 
-    # type_names = Enum.map(type_defs, fn {name, _} -> name end)
-    # File.write!("#{file_path}/schema.ex", schema_template(module_name, type_names))
-
     File.write!("#{types_path}/json.ex", json_type(module_name))
     File.write!("#{types_path}/uuid4.ex", uuid_type(module_name))
-
-    #
-    # ecto_json_type_path = "#{file_path}/ecto_json.ex"
-    #
-    # if !File.exists?(ecto_json_type_path) do
-    #   File.write!(ecto_json_type_path, TableGenerator.ecto_json_type())
-    # end
-    # Mix.Task.run("app.start")
-
-    # AbsintheGen.introspect_schema(url)
-    # |> AbsintheGen.process_schema()
-
-    # AbsintheGen.process_schema(File.read!("./static/introspection_query_result.json"))
   end
 
   def schema_template(module_name, type_names) do

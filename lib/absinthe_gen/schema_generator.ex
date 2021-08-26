@@ -122,10 +122,6 @@ defmodule AbsintheGen.SchemaGenerator do
     generate_selectable(table)
   end
 
-  def generate_mutations(table) do
-    generate_insertable(table)
-  end
-
   def generate_selectable(%{selectable: true, name: name}) do
     %{
       singular_camelized_table_name: singular_camelized_table_name,
@@ -161,6 +157,51 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_insertable(_), do: ["", ""]
 
+  def generate_updatable(%{updatable: true, name: name} = table) do
+    primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
+
+    if is_nil(primary_key) do
+      ["", ""]
+    else
+      %{
+        singular_underscore_table_name: singular_underscore_table_name
+      } = table_names = get_table_names(name)
+
+      input_name = "update_#{singular_underscore_table_name}"
+      input_object = generate_update_input_object(input_name, table.attributes)
+
+      mutation = generate_update_mutation(table_names, input_name)
+
+      [mutation, input_object]
+    end
+  end
+
+  def generate_updatable(_), do: ["", ""]
+
+  def generate_deletable(%{updatable: true, name: name} = table) do
+    primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
+
+    if is_nil(primary_key) do
+      ["", ""]
+    else
+      %{
+        singular_underscore_table_name: singular_underscore_table_name,
+        singular_camelized_table_name: singular_camelized_table_name
+      } = get_table_names(name)
+
+      type = process_type(primary_key.type)
+
+      """
+      field :delete_#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
+        arg :id, non_null(#{type})
+        resolve &Resolvers.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}/3
+      end
+      """
+    end
+  end
+
+  def generate_deletable(_), do: ["", ""]
+
   def generate_create_mutation(
         %{
           singular_camelized_table_name: singular_camelized_table_name,
@@ -168,26 +209,32 @@ defmodule AbsintheGen.SchemaGenerator do
         },
         input_name
       ) do
-    app_name = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
-
     """
     field :create_#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
       arg :input, non_null(:#{input_name})
-      # TODO move this callback to the resolver
-      resolve fn _, %{input: input}, _ -> #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) end
+      resolve &Resolvers.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}/3
     end
     """
   end
 
-  def get_fields(attributes) do
-    attributes
-    |> Enum.filter(&is_not_primary_key/1)
+  def generate_update_mutation(
+        %{
+          singular_camelized_table_name: singular_camelized_table_name,
+          singular_underscore_table_name: singular_underscore_table_name
+        },
+        input_name
+      ) do
+    """
+    field :update_#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
+      arg :input, non_null(:#{input_name}_input)
+      resolve &Resolvers.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}/3
+    end
+    """
   end
 
   def generate_input_object(input_object_name, attributes) do
     fields =
       attributes
-      |> get_fields
       |> Enum.map(&generate_field/1)
       |> Enum.join("\n")
 
@@ -198,16 +245,42 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_field(%{name: name, has_default: has_default, is_not_null: is_not_null, type: type}) do
-    "field :#{name}, #{process_type(type, has_default, is_not_null)}"
+  def generate_update_input_object(input_object_name, attributes) do
+    primary_key = Enum.find(attributes, fn attr -> !is_not_primary_key(attr) end)
+
+    patch_fields =
+      attributes
+      |> Enum.map(fn field -> generate_field(field, true) end)
+      |> Enum.join("\n")
+
+    """
+    input_object :#{input_object_name}_patch do
+      #{patch_fields}
+    end
+    input_object :#{input_object_name}_input do
+      field :#{primary_key.name}, non_null(#{process_type(primary_key.type)})
+      field :patch, non_null(:#{input_object_name}_patch)
+    end
+    """
+  end
+
+  def generate_field(
+        %{name: name, has_default: has_default, is_not_null: is_not_null, type: type},
+        ignore_null_constraints \\ false
+      ) do
+    type =
+      if ignore_null_constraints do
+        process_type(type)
+      else
+        process_type(type, has_default, is_not_null)
+      end
+
+    "field :#{name}, #{type}"
   end
 
   def process_type(%{name: _name} = type) do
     case Builder.build_type(%{type: type}) do
       {:array, type} ->
-        IO.puts("it's an array type")
-        IO.inspect(type)
-        IO.inspect(FieldGenerator.type_map()[type] || type)
         "list_of(:#{FieldGenerator.type_map()[type] || type})"
 
       "enum" ->
@@ -228,12 +301,8 @@ defmodule AbsintheGen.SchemaGenerator do
 
   Don't want to include primary key in "create" input.
   """
-  def is_not_primary_key(%{constraints: constraints} = attr) do
-    if is_foreign_key(attr) do
-      true
-    else
-      !(constraints |> Enum.member?(%{type: :primary_key}))
-    end
+  def is_not_primary_key(%{constraints: constraints}) do
+    !(constraints |> Enum.member?(%{type: :primary_key}))
   end
 
   def is_foreign_key(%{constraints: constraints}) do
@@ -241,11 +310,18 @@ defmodule AbsintheGen.SchemaGenerator do
       |> is_nil)
   end
 
-  def generate_resolver(name) do
-    {name, Code.format_string!(resolver_template(PgGen.LocalConfig.get_app_name(), name))}
+  def generate_resolver(name, table) do
+    {name, Code.format_string!(resolver_template(PgGen.LocalConfig.get_app_name(), name, table))}
   end
 
-  def resolver_template(app_name, name) do
+  def resolver_template(app_name, name, table) do
+    %{
+      selectable: selectable,
+      insertable: insertable,
+      updatable: updatable,
+      deletable: deletable
+    } = table
+
     module_name =
       "#{app_name}Web.Resolvers.#{Macro.camelize(name) |> Inflex.singularize()}"
       |> Macro.camelize()
@@ -257,13 +333,50 @@ defmodule AbsintheGen.SchemaGenerator do
     defmodule #{module_name} do
       alias #{Macro.camelize(app_name)}.Contexts.#{singular_camelized_table}
 
+      #{if selectable do
+      """
       def #{singular_table}(_, %{id: id}, _) do
         {:ok, #{singular_camelized_table}.get_#{singular_table}!(id)}
       end
-
+    
       def #{name}(_, _, _) do
         {:ok, #{singular_camelized_table}.list_#{name}()}
       end
+      """
+    else
+      ""
+    end}
+
+      #{if insertable do
+      """
+      def create_#{singular_table}(_, %{input: input}, _) do
+        #{app_name}.Contexts.#{singular_camelized_table}.create_#{singular_table}(input)
+      end
+      """
+    else
+      ""
+    end}
+
+      #{if updatable do
+      """
+      def update_#{singular_table}(_, %{input: input}, _) do
+        #{singular_table} = #{app_name}.Contexts.#{singular_camelized_table}.get_#{singular_table}!(input.id)
+        #{app_name}.Contexts.#{singular_camelized_table}.update_#{singular_table}(#{singular_table}, input.patch)
+      end
+      """
+    else
+      ""
+    end}
+      #{if deletable do
+      """
+      def delete_#{singular_table}(_, %{id: id}, _) do
+        #{singular_table} = #{app_name}.Contexts.#{singular_camelized_table}.get_#{singular_table}!(id)
+        #{app_name}.Contexts.#{singular_camelized_table}.delete_#{singular_table}(#{singular_table})
+      end
+      """
+    else
+      ""
+    end}
     end
     """
   end

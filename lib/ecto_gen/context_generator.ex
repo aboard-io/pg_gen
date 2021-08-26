@@ -108,9 +108,8 @@ defmodule EctoGen.ContextGenerator do
     singular_lowercase = Inflex.singularize(lower_case_table_name)
 
     """
-    def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, attrs) do
+    def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}) do
       #{singular_lowercase}
-      |> #{table_name}.changeset(attrs)
       |> Repo.delete()
     end
     """
