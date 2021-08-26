@@ -2,6 +2,7 @@ defmodule AbsintheGen.FieldGenerator do
   @type_map %{
     "text" => "string",
     "citext" => "string",
+    "tsvector" => "string",
     "timestamptz" => "datetime",
     "uuid" => "uuid4",
     "jsonb" => "json",
