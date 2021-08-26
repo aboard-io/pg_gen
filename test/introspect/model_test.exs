@@ -15,6 +15,7 @@ defmodule Introspection.ModelTest do
       selectable: true,
       updatable: true,
       deletable: true,
+      indexed_attrs: ["id", "email"],
       attributes: [
         %{
           name: "id",

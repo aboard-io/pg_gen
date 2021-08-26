@@ -56,6 +56,7 @@ interesting and fun. Please feel free to play around, submit PRs, etc.
   }
   ```
 
+- [ ] Support exposing postgres functions
 - [ ] Options for how codegen works. E.g., optional resolve methods. Right now
       I'm just using `dataloader`, which helps batch db queries and avoids N+1.
 - [ ] Overrides/customization. E.g., it'd be nice to be able to write some

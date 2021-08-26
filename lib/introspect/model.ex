@@ -1,6 +1,6 @@
 defmodule Introspection.Model do
   def from_introspection(
-        %{"class" => tables} = introspection_result,
+        %{"class" => tables, "index" => indexes} = introspection_result,
         schema
       ) do
     references_and_tables =
@@ -24,14 +24,22 @@ defmodule Introspection.Model do
 
     enum_types = lift_types(tables)
 
+    indexes_by_table_id =
+      Enum.reduce(indexes, %{}, fn %{"classId" => table_id} = index, acc ->
+        case Map.get(acc, table_id) do
+          nil -> Map.put(acc, table_id, [index])
+          table_indexes -> Map.put(acc, table_id, [index | table_indexes])
+        end
+      end)
+
     tables =
       add_references_to_foriegn_tables(
         tables,
         references
       )
+      |> Enum.map(fn table -> add_indexes_to_table(table, indexes_by_table_id[table.id]) end)
 
     %{tables: tables, enum_types: enum_types}
-    # |> IO.inspect(label: "asdf")
   end
 
   def from_introspection(result, _schema) do
@@ -365,7 +373,7 @@ defmodule Introspection.Model do
     |> Enum.uniq()
   end
 
-  defp get_enum_types(%{attributes: attrs, name: name}) when is_list(attrs) do
+  defp get_enum_types(%{attributes: attrs}) when is_list(attrs) do
     Enum.filter(attrs, fn attr ->
       case attr.type[:enum_variants] do
         nil -> false
@@ -373,5 +381,23 @@ defmodule Introspection.Model do
       end
     end)
     |> Enum.map(fn attr -> attr.type end)
+  end
+
+  def add_indexes_to_table(table, table_indexes) do
+    indexed_attrs =
+      Enum.map(
+        table_indexes,
+        fn %{"attributeNums" => attr_nums} ->
+          case attr_nums do
+            [single_col] ->
+              Enum.find(table.attributes, fn %{num: num} -> num == single_col end).name
+
+            _ ->
+              nil
+          end
+        end
+      )
+
+    Map.put(table, :indexed_attrs, indexed_attrs)
   end
 end
