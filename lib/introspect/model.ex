@@ -6,6 +6,7 @@ defmodule Introspection.Model do
     references_and_tables =
       tables
       |> Enum.filter(fn table -> table["namespaceName"] == schema end)
+      |> Enum.filter(fn table -> table["classKind"] != "c" end)
       |> Enum.map(&build_table_objects/1)
       |> Enum.map(fn table -> add_attributes_for_table(table, introspection_result) end)
 
