@@ -76,6 +76,14 @@ interesting and fun. Please feel free to play around, submit PRs, etc.
 - [ ] RLS eject. It seems interesting and somewhat worthwhile bring the RLS
       checks into generated app code using Ecto `fragment`s.
 
+## Development
+
+Most of my testing is against the existing Aboard database.
+
+```bash
+mix test.watch
+```
+
 ---
 
 If [available in Hex](https://hex.pm/docs/publish) (again, it's not), the package can be installed
