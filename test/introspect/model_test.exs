@@ -7,6 +7,78 @@ defmodule Introspection.ModelTest do
                              |> Jason.decode!()
 
   test "adds attrs and types and constraints to a simple user database" do
+    attrs = [
+      %{
+        name: "id",
+        insertable: true,
+        selectable: true,
+        updatable: true,
+        type: %{
+          description: "-2 billion to 2 billion integer, 4-byte storage",
+          name: "int4",
+          tags: %{},
+          category: "N",
+          enum_variants: nil
+        },
+        type_id: "23",
+        description: nil,
+        has_default: true,
+        is_not_null: true,
+        num: 1,
+        parent_table: %{id: "233794", name: "users"},
+        constraints: [
+          %{
+            type: :primary_key
+          }
+        ]
+      },
+      %{
+        name: "name",
+        insertable: true,
+        selectable: true,
+        updatable: true,
+        type: %{
+          description: "variable-length string, no limit specified",
+          name: "text",
+          category: "S",
+          tags: %{},
+          enum_variants: nil
+        },
+        type_id: "25",
+        description: nil,
+        has_default: false,
+        is_not_null: false,
+        num: 2,
+        parent_table: %{id: "233794", name: "users"},
+        constraints: []
+      },
+      %{
+        name: "email",
+        insertable: true,
+        selectable: true,
+        updatable: true,
+        type: %{
+          description: "variable-length string, no limit specified",
+          name: "text",
+          category: "S",
+          tags: %{},
+          enum_variants: nil
+        },
+        type_id: "25",
+        description: nil,
+        has_default: false,
+        is_not_null: false,
+        constraints: [
+          %{
+            type: :uniq,
+            with: [3]
+          }
+        ],
+        parent_table: %{id: "233794", name: "users"},
+        num: 3
+      }
+    ]
+
     expected = %{
       id: "233794",
       name: "users",
@@ -15,78 +87,8 @@ defmodule Introspection.ModelTest do
       selectable: true,
       updatable: true,
       deletable: true,
-      indexed_attrs: ["id", "email"],
-      attributes: [
-        %{
-          name: "id",
-          insertable: true,
-          selectable: true,
-          updatable: true,
-          type: %{
-            description: "-2 billion to 2 billion integer, 4-byte storage",
-            name: "int4",
-            tags: %{},
-            category: "N",
-            enum_variants: nil
-          },
-          type_id: "23",
-          description: nil,
-          has_default: true,
-          is_not_null: true,
-          num: 1,
-          parent_table: %{id: "233794", name: "users"},
-          constraints: [
-            %{
-              type: :primary_key
-            }
-          ]
-        },
-        %{
-          name: "name",
-          insertable: true,
-          selectable: true,
-          updatable: true,
-          type: %{
-            description: "variable-length string, no limit specified",
-            name: "text",
-            category: "S",
-            tags: %{},
-            enum_variants: nil
-          },
-          type_id: "25",
-          description: nil,
-          has_default: false,
-          is_not_null: false,
-          num: 2,
-          parent_table: %{id: "233794", name: "users"},
-          constraints: []
-        },
-        %{
-          name: "email",
-          insertable: true,
-          selectable: true,
-          updatable: true,
-          type: %{
-            description: "variable-length string, no limit specified",
-            name: "text",
-            category: "S",
-            tags: %{},
-            enum_variants: nil
-          },
-          type_id: "25",
-          description: nil,
-          has_default: false,
-          is_not_null: false,
-          constraints: [
-            %{
-              type: :uniq,
-              with: [3]
-            }
-          ],
-          parent_table: %{id: "233794", name: "users"},
-          num: 3
-        }
-      ]
+      indexed_attrs: [{"id", hd(attrs).type}, {"email", (Enum.reverse(attrs) |> hd).type}],
+      attributes: attrs
     }
 
     schema = "app_public"

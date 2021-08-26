@@ -32,8 +32,25 @@ defmodule EctoGen.ContextGenerator do
         Dataloader.Ecto.new(#{app_name}.Repo, query: &query/2)
       end
 
-      def query(queryable, _params) do
+      def query(queryable, args) do
         queryable
+        |> with_query_args(args)
+      end
+
+      def with_query_args(query, args) do
+        Enum.reduce(args, query, fn {k, v}, query ->
+          case k do
+            :order_by ->
+              query |> order_by(^v)
+
+            :condition ->
+              conditions = Enum.into(v, Keyword.new())
+              query |> where(^conditions)
+
+            _ ->
+              query
+          end
+        end)
       end
     end
     """
@@ -50,8 +67,10 @@ defmodule EctoGen.ContextGenerator do
       Repo.get!(#{table_name}, id)
     end
 
-    def list_#{Inflex.pluralize(lower_case_table_name)} do
-      Repo.all(#{table_name})
+    def list_#{Inflex.pluralize(lower_case_table_name)}(args) do
+      from(#{table_name})
+      |> with_query_args(args)
+      |> Repo.all()
     end
     """
   end

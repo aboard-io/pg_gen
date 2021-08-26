@@ -1,8 +1,9 @@
 defmodule AbsintheGen.SchemaGenerator do
   alias PgGen.{Utils, Builder}
   alias AbsintheGen.FieldGenerator
+  import Utils, only: [get_table_names: 1]
 
-  def generate(%{name: name, attributes: attributes} = table, _schema) do
+  def generate_types(%{name: name, attributes: attributes} = table, tables, _schema) do
     IO.puts("====================#{name}===============")
 
     dataloader_prefix = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
@@ -18,7 +19,9 @@ defmodule AbsintheGen.SchemaGenerator do
         {a, b, c,
          Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: dataloader_prefix})}
       end)
-      |> Enum.map(&FieldGenerator.to_string/1)
+      |> Enum.map(fn attr ->
+        FieldGenerator.to_string(attr)
+      end)
       |> Enum.join("\n")
 
     references =
@@ -35,15 +38,34 @@ defmodule AbsintheGen.SchemaGenerator do
             {a, b, c,
              Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: dataloader_prefix})}
           end)
-          |> Enum.map(&FieldGenerator.to_string/1)
-          |> Enum.join("\n")
+          |> Enum.map(fn attr ->
+            # Pass the referenced table so we know if it has indexes we can use in arguments on the field
+            FieldGenerator.to_string(
+              attr,
+              Enum.find(tables, fn %{name: name} ->
+                {_, _, rel_table, _} = attr
 
-          # |> Enum.map(&FieldGenerator.to_string/1)
+                %{plural_underscore_table_name: plural_underscore_table_name} =
+                  get_table_names(rel_table)
+
+                name == plural_underscore_table_name
+              end)
+            )
+          end)
+          |> Enum.join("\n")
       end
 
-    fields = attributes <> "\n\n" <> references
+    conditions = generate_condition_input(table)
 
-    {name, Utils.format_code!(simple_types_template(name, fields))}
+    order_by_enums =
+      if Map.has_key?(table, :indexed_attrs),
+        do: generate_order_by_enum(table.name, table.indexed_attrs),
+        else: ""
+
+    fields = attributes <> "\n\n" <> references
+    conditions_and_input_objects = conditions <> "\n\n" <> order_by_enums
+
+    {name, Utils.format_code!(simple_types_template(name, fields, conditions_and_input_objects))}
   end
 
   def filter_accessible(tables) do
@@ -61,12 +83,13 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def is_accessible(_), do: false
 
-  def simple_types_template(name, fields) do
+  def simple_types_template(name, fields, conditions_and_input_objects) do
     """
       object :#{name |> Inflex.singularize() |> Macro.underscore()} do
         #{fields}
       end
 
+      #{conditions_and_input_objects}
     """
   end
 
@@ -110,12 +133,14 @@ defmodule AbsintheGen.SchemaGenerator do
     generate_selectable(table)
   end
 
-  def generate_selectable(%{selectable: true, name: name}) do
+  def generate_selectable(%{selectable: true, name: name} = table) do
     %{
       singular_camelized_table_name: singular_camelized_table_name,
       plural_underscore_table_name: plural_underscore_table_name,
       singular_underscore_table_name: singular_underscore_table_name
     } = get_table_names(name)
+
+    args = FieldGenerator.generate_args_for_object(table)
 
     """
     field :#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
@@ -123,12 +148,58 @@ defmodule AbsintheGen.SchemaGenerator do
       resolve &Resolvers.#{singular_camelized_table_name}.#{singular_underscore_table_name}/3
     end
     field :#{plural_underscore_table_name}, list_of(non_null(:#{singular_underscore_table_name})) do
+      #{args}
       resolve &Resolvers.#{singular_camelized_table_name}.#{plural_underscore_table_name}/3
     end
     """
   end
 
   def generate_selectable(_), do: ""
+
+  def generate_condition_input(%{indexed_attrs: indexed_attrs, name: name}) do
+    %{singular_underscore_table_name: singular_underscore_table_name} = get_table_names(name)
+
+    fields =
+      indexed_attrs
+      |> Enum.map(fn {name, type} ->
+        type = process_type(type)
+
+        """
+        field :#{name}, #{type}
+        """
+      end)
+
+    """
+    input_object :#{singular_underscore_table_name}_condition do
+      #{fields}
+    end
+    """
+  end
+
+  def generate_condition_input(_), do: ""
+
+  def generate_order_by_enum(_name, indexes) when length(indexes) == 0, do: ""
+
+  def generate_order_by_enum(name, indexes) do
+    %{
+      plural_underscore_table_name: plural_underscore_table_name
+    } = get_table_names(name)
+
+    values =
+      Enum.map(indexes, fn {name, _type} ->
+        """
+        value :#{String.upcase(name)}_ASC, as: {:asc, :#{name}}
+        value :#{String.upcase(name)}_DESC, as: {:desc, :#{name}}
+        """
+      end)
+      |> Enum.join("\n")
+
+    """
+    enum :#{plural_underscore_table_name}_order_by do
+      #{values}
+    end
+    """
+  end
 
   def generate_insertable(%{insertable: true, name: name} = table) do
     %{
@@ -327,8 +398,8 @@ defmodule AbsintheGen.SchemaGenerator do
         {:ok, #{singular_camelized_table}.get_#{singular_table}!(id)}
       end
     
-      def #{name}(_, _, _) do
-        {:ok, #{singular_camelized_table}.list_#{name}()}
+      def #{name}(_, args, _) do
+        {:ok, #{singular_camelized_table}.list_#{name}(args)}
       end
       """
     else
@@ -391,17 +462,5 @@ defmodule AbsintheGen.SchemaGenerator do
       [Absinthe.Middleware.Dataloader] ++ Absinthe.Plugin.defaults()
     end
     """
-  end
-
-  def get_table_names(name) do
-    singular = Inflex.singularize(name)
-    plural = Inflex.pluralize(name)
-
-    %{
-      singular_camelized_table_name: Macro.camelize(singular),
-      plural_camelized_table_name: Macro.underscore(plural),
-      singular_underscore_table_name: Macro.underscore(singular),
-      plural_underscore_table_name: Macro.underscore(plural)
-    }
   end
 end

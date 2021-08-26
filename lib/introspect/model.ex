@@ -384,6 +384,8 @@ defmodule Introspection.Model do
     |> Enum.map(fn attr -> attr.type end)
   end
 
+  def add_indexes_to_table(table, nil), do: table
+
   def add_indexes_to_table(table, table_indexes) do
     indexed_attrs =
       Enum.map(
@@ -391,13 +393,15 @@ defmodule Introspection.Model do
         fn %{"attributeNums" => attr_nums} ->
           case attr_nums do
             [single_col] ->
-              Enum.find(table.attributes, fn %{num: num} -> num == single_col end).name
+              attr = Enum.find(table.attributes, fn %{num: num} -> num == single_col end)
+              {attr.name, attr.type}
 
             _ ->
               nil
           end
         end
       )
+      |> Enum.filter(&(!is_nil(&1)))
 
     Map.put(table, :indexed_attrs, indexed_attrs)
   end

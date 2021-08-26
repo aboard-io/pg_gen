@@ -51,7 +51,7 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
 
     type_defs =
       filtered_tables
-      |> Enum.map(fn table -> SchemaGenerator.generate(table, schema) end)
+      |> Enum.map(fn table -> SchemaGenerator.generate_types(table, filtered_tables, schema) end)
 
     def_strings =
       type_defs

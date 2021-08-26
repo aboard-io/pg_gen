@@ -124,6 +124,18 @@ defmodule PgGen.Utils do
     end)
   end
 
+  def get_table_names(name) do
+    singular = Inflex.singularize(name)
+    plural = Inflex.pluralize(name)
+
+    %{
+      singular_camelized_table_name: Macro.camelize(singular),
+      plural_camelized_table_name: Macro.underscore(plural),
+      singular_underscore_table_name: Macro.underscore(singular),
+      plural_underscore_table_name: Macro.underscore(plural)
+    }
+  end
+
   def deduplicate_joins(associations), do: associations |> dedupe_first_pass |> dedupe_second_pass
 
   defp dedupe_first_pass(associations), do: deduplicate_join_associations(associations, 1)
