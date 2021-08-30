@@ -55,7 +55,7 @@ defmodule AbsintheGen.SchemaGenerator do
           |> Enum.join("\n")
       end
 
-    conditions = generate_condition_input(table)
+    conditions_and_filters = generate_condition_and_filter_input(table)
 
     order_by_enums =
       if Map.has_key?(table, :indexed_attrs),
@@ -63,7 +63,8 @@ defmodule AbsintheGen.SchemaGenerator do
         else: ""
 
     fields = attributes <> "\n\n" <> references
-    conditions_and_input_objects = conditions <> "\n\n" <> order_by_enums
+
+    conditions_and_input_objects = conditions_and_filters <> "\n\n" <> order_by_enums
 
     {name, Utils.format_code!(simple_types_template(name, fields, conditions_and_input_objects))}
   end
@@ -93,7 +94,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def types_template(types, enum_types, query_defs, dataloader, mutations, inputs) do
+  def types_template(types, enum_types, query_defs, dataloader, mutations, inputs, scalar_filters) do
     module_name = "#{PgGen.LocalConfig.get_app_name() |> Macro.camelize()}"
     module_name_web = "#{module_name}Web"
 
@@ -105,11 +106,14 @@ defmodule AbsintheGen.SchemaGenerator do
       import_types Absinthe.Type.Custom
       import_types(#{module_name_web}.Schema.Types.Custom.JSON)
       import_types(#{module_name_web}.Schema.Types.Custom.UUID4)
+      import_types(#{module_name_web}.Schema.Types.Custom.Cursor)
 
       alias #{module_name_web}.Resolvers
       alias #{module_name}.Contexts
 
       #{types}
+
+      #{scalar_filters}
 
       #{enum_types}
 
@@ -156,10 +160,10 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_selectable(_), do: ""
 
-  def generate_condition_input(%{indexed_attrs: indexed_attrs, name: name}) do
+  def generate_condition_and_filter_input(%{indexed_attrs: indexed_attrs, name: name}) do
     %{singular_underscore_table_name: singular_underscore_table_name} = get_table_names(name)
 
-    fields =
+    condition_fields =
       indexed_attrs
       |> Enum.map(fn {name, type} ->
         type = process_type(type)
@@ -169,14 +173,48 @@ defmodule AbsintheGen.SchemaGenerator do
         """
       end)
 
+    filter_fields =
+      indexed_attrs
+      |> Enum.map(fn {name, type} ->
+        type = process_type(type)
+
+        """
+        field :#{name}, #{type}_filter
+        """
+      end)
+
     """
     input_object :#{singular_underscore_table_name}_condition do
-      #{fields}
+      #{condition_fields}
+    end
+
+    input_object :#{singular_underscore_table_name}_filter do
+      #{filter_fields}
     end
     """
   end
 
-  def generate_condition_input(_), do: ""
+  def generate_condition_and_filter_input(_), do: ""
+
+  def generate_scalar_filters() do
+    ["datetime", "uuid4", "boolean", "string", "date", "integer"]
+    |> Enum.map(&generate_input_filter/1)
+    |> Enum.join("\n\n")
+  end
+
+  def generate_input_filter(type) do
+    """
+    input_object :#{type}_filter do
+      field :is_null, :boolean
+      field :equal_to, :#{type}
+      field :not_equal_to, :#{type}
+      field :greater_than, :#{type}
+      field :greater_than_or_equal_to, :#{type}
+      field :less_than, :#{type}
+      field :less_than_or_equal_to, :#{type}
+    end
+    """
+  end
 
   def generate_order_by_enum(_name, indexes) when length(indexes) == 0, do: ""
 

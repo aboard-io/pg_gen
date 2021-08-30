@@ -62,6 +62,14 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
       |> Enum.map(&EnumGenerator.to_string/1)
       |> Enum.join("\n\n")
 
+    enum_filters =
+      enum_types
+      |> Enum.map(fn %{name: name} -> SchemaGenerator.generate_input_filter(name) end)
+      |> Enum.join("\n\n")
+
+    scalar_filters = SchemaGenerator.generate_scalar_filters()
+    scalar_and_enum_filters = scalar_filters <> "\n\n" <> enum_filters
+
     query_defs =
       filtered_tables
       |> Enum.map(&SchemaGenerator.generate_queries/1)
@@ -109,7 +117,8 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
         query_defs,
         dataloader_strings,
         mutation_strings,
-        input_strings
+        input_strings,
+        scalar_and_enum_filters
       )
       |> Utils.format_code!()
     )
@@ -135,6 +144,7 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
 
     File.write!("#{types_path}/json.ex", json_type(module_name))
     File.write!("#{types_path}/uuid4.ex", uuid_type(module_name))
+    File.write!("#{types_path}/cursor.ex", cursor_type(module_name))
   end
 
   def schema_template(module_name, type_names) do
@@ -199,6 +209,7 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
       defp encode(value), do: value
     end
     """
+    |> Utils.format_code!()
   end
 
   def uuid_type(module_name) do
@@ -240,5 +251,46 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
       defp encode(value), do: value
     end
     """
+    |> Utils.format_code!()
+  end
+
+  def cursor_type(module_name) do
+    """
+      defmodule #{module_name}.Types.Custom.Cursor do
+        @moduledoc \"\"\"
+        The Cursor scalar type
+        \"\"\"
+        use Absinthe.Schema.Notation
+
+        scalar :cursor, name: "Cursor" do
+          description(\"\"\"
+          A cursor that can be used for pagination.
+          \"\"\")
+
+          serialize(&encode/1)
+          parse(&decode/1)
+        end
+
+        @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
+        @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
+        defp decode(%Absinthe.Blueprint.Input.String{value: value}) do
+          value |> Base.decode64!()
+        end
+
+        defp decode(%Absinthe.Blueprint.Input.Null{}) do
+          {:ok, nil}
+        end
+
+        defp decode(_) do
+          :error
+        end
+
+        defp encode(nil), do: nil
+        defp encode(""), do: nil
+        defp encode(value), do: value |> to_string |> Base.encode64()
+      end
+
+    """
+    |> Utils.format_code!()
   end
 end

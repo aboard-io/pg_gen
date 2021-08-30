@@ -9,6 +9,8 @@
     many_to_many: :*,
     object: :*,
     value: :*,
+    resolve: :*,
+    arg: :*,
     enum: :*
   ]
 ]

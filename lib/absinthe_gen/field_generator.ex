@@ -133,13 +133,14 @@ defmodule AbsintheGen.FieldGenerator do
     has_indexes = Map.has_key?(table, :indexed_attrs) && length(table.indexed_attrs) > 0
 
     """
-    arg :after, :string # TODO make :cursor
-    arg :before, :string # TODO make :cursor
+    arg :after, :cursor
+    arg :before, :cursor
     arg :first, :integer
     arg :last, :integer
     #{if has_indexes do
       """
       arg :condition, :#{singular_underscore_table_name}_condition
+      arg :filter, :#{singular_underscore_table_name}_filter
       arg :order_by, list_of(:#{plural_underscore_table_name}_order_by), default_value: #{default_order_by(table)}
       """
     else
