@@ -117,6 +117,7 @@ defmodule Mix.Tasks.PgGen.GenerateEcto do
           query
           |> maybe_condition(opts)
           |> maybe_filter(opts)
+          |> maybe_paginate(opts)
           |> maybe_sort(opts)
           |> maybe_limit(opts)
         end
@@ -237,6 +238,28 @@ defmodule Mix.Tasks.PgGen.GenerateEcto do
 
             num ->
               query |> limit(^num)
+          end
+        end
+
+        defp maybe_paginate(query, opts) do
+          case Map.get(opts, :after) do
+            nil ->
+              case Map.get(opts, :before) do
+                nil ->
+                  query
+
+                {{_dir, field} = order_by, value} ->
+                  query
+                  |> where(^build_condition(field, %{less_than: value}))
+                  |> order_by(^sort_with_limit(order_by, opts))
+              end
+
+            {{_dir, field} = order_by, value} ->
+              IO.puts("Do after value")
+
+              query
+              |> where(^build_condition(field, %{greater_than: value}))
+              |> order_by(^sort_with_limit(order_by, opts))
           end
         end
       end

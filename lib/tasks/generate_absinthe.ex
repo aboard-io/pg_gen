@@ -53,6 +53,11 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
       filtered_tables
       |> Enum.map(fn table -> SchemaGenerator.generate_types(table, filtered_tables, schema) end)
 
+    connection_defs =
+      filtered_tables
+      |> Enum.map(&SchemaGenerator.generate_connection/1)
+      |> Enum.join("\n\n")
+
     def_strings =
       type_defs
       |> Enum.reduce("", fn {_name, def}, acc -> "#{acc}\n\n#{def}" end)
@@ -118,7 +123,8 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
         dataloader_strings,
         mutation_strings,
         input_strings,
-        scalar_and_enum_filters
+        scalar_and_enum_filters,
+        connection_defs
       )
       |> Utils.format_code!()
     )
@@ -141,6 +147,11 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
     |> Enum.map(fn {name, file} -> File.write!("#{resolver_path}/#{name}.ex", file) end)
 
     module_name = "#{PgGen.LocalConfig.get_app_name()}_web.Schema" |> Macro.camelize()
+
+    File.write!(
+      "#{resolver_path}/connections.ex",
+      connections_resolver_template(module_name |> String.split(".Schema") |> hd)
+    )
 
     File.write!("#{types_path}/json.ex", json_type(module_name))
     File.write!("#{types_path}/uuid4.ex", uuid_type(module_name))
@@ -274,7 +285,8 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
         @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
         @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
         defp decode(%Absinthe.Blueprint.Input.String{value: value}) do
-          value |> Base.decode64!()
+          [dir, col_name, value] = value |> Base.decode64!() |> Jason.decode!()
+          {:ok, {{String.to_existing_atom(dir), String.to_existing_atom(col_name)}, value}}
         end
 
         defp decode(%Absinthe.Blueprint.Input.Null{}) do
@@ -287,9 +299,93 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
 
         defp encode(nil), do: nil
         defp encode(""), do: nil
-        defp encode(value), do: value |> to_string |> Base.encode64()
+        defp encode({{dir, col_name}, value}),
+          do: [dir, col_name, value] |> Jason.encode!() |> Base.encode64()
+
       end
 
+    """
+    |> Utils.format_code!()
+  end
+
+  def connections_resolver_template(module_name) do
+    """
+    defmodule #{module_name}.Resolvers.Connections do
+      import Absinthe.Resolution.Helpers, only: [on_load: 2]
+
+      @doc \"\"\"
+      Usage in an Absinthe schema:
+
+      ```elixir
+      resolve Connections.resolve(Example.Repo.Workflow, :workflows_by_workflow_members)
+      ```
+      \"\"\"
+      def resolve(repo, field_name) do
+        fn parent, args, %{context: %{loader: loader}} ->
+          loader
+          |> Dataloader.load(repo, {field_name, args}, parent)
+          |> on_load(fn loader_with_data ->
+            nodes =
+              Dataloader.get(
+                loader_with_data,
+                repo,
+                {field_name, args},
+                parent
+              )
+
+            # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
+            # to make the query work with  alimit.
+            # Here we put the records back in the expected order
+            nodes =
+              case is_integer(Map.get(args, :last)) do
+                false ->
+                  nodes
+
+                true ->
+                  if is_integer(Map.get(args, :first)), do: nodes, else: Enum.reverse(nodes)
+              end
+
+            # passing args to children so we can use order_by to generate cursors
+            {:ok, %{nodes: nodes, args: args}}
+          end)
+        end
+      end
+
+          @doc \"\"\"
+          Usage in an Absinthe schema:
+
+          ```elixir
+          resolve Connections.resolve_page_info()
+          ```
+          \"\"\"
+      def resolve_page_info() do
+        fn %{nodes: nodes, args: parent_args}, _, _ ->
+          IO.inspect(parent_args, label: "args")
+
+          {_dir, col} =
+            order_by =
+            case Map.get(parent_args, :order_by) do
+              nil -> raise "All queries should have a default order_by"
+              [{dir, col} | _] -> {dir, col}
+              {dir, col} -> {dir, col}
+            end
+
+          start_cursor_val =
+            case nodes do
+              [] -> nil
+              [node | _] -> {order_by, Map.get(node, col)}
+            end
+
+          end_cursor_val =
+            case Enum.reverse(nodes) do
+              [] -> nil
+              [node | _] -> {order_by, Map.get(node, col)}
+            end
+
+          {:ok, %{start_cursor: start_cursor_val, end_cursor: end_cursor_val}}
+        end
+      end
+    end
     """
     |> Utils.format_code!()
   end

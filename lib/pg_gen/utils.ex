@@ -6,20 +6,26 @@ defmodule PgGen.Utils do
   alias PgGen.Builder
 
   def format_code!(code_str) do
-    Code.format_string!(code_str,
-      locals_without_parens: [
-        field: :*,
-        belongs_to: :*,
-        has_many: :*,
-        has_one: :*,
-        many_to_many: :*,
-        object: :*,
-        arg: :*,
-        resolve: :*,
-        value: :*,
-        enum: :*
-      ]
-    )
+    try do
+      Code.format_string!(code_str,
+        locals_without_parens: [
+          field: :*,
+          belongs_to: :*,
+          has_many: :*,
+          has_one: :*,
+          many_to_many: :*,
+          object: :*,
+          arg: :*,
+          resolve: :*,
+          value: :*,
+          enum: :*
+        ]
+      )
+    rescue
+      _ ->
+        IO.puts(code_str)
+        IO.puts("Something wrong with the above code string")
+    end
   end
 
   @doc """

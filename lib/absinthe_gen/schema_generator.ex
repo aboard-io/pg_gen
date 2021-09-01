@@ -94,7 +94,16 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def types_template(types, enum_types, query_defs, dataloader, mutations, inputs, scalar_filters) do
+  def types_template(
+        types,
+        enum_types,
+        query_defs,
+        dataloader,
+        mutations,
+        inputs,
+        scalar_filters,
+        connections
+      ) do
     module_name = "#{PgGen.LocalConfig.get_app_name() |> Macro.camelize()}"
     module_name_web = "#{module_name}Web"
 
@@ -109,13 +118,24 @@ defmodule AbsintheGen.SchemaGenerator do
       import_types(#{module_name_web}.Schema.Types.Custom.Cursor)
 
       alias #{module_name_web}.Resolvers
+      alias #{module_name_web}.Resolvers.Connections
       alias #{module_name}.Contexts
+      alias #{module_name}.Repo
 
       #{types}
+
+      #{connections}
 
       #{scalar_filters}
 
       #{enum_types}
+
+      object :page_info do
+        field :start_cursor, :cursor
+        field :end_cursor, :cursor
+        field :has_next_page, non_null(:boolean)
+        field :has_previous_page, non_null(:boolean)
+      end
 
       query do
         #{query_defs}
@@ -151,7 +171,7 @@ defmodule AbsintheGen.SchemaGenerator do
       arg :id, non_null(:id)
       resolve &Resolvers.#{singular_camelized_table_name}.#{singular_underscore_table_name}/3
     end
-    field :#{plural_underscore_table_name}, list_of(non_null(:#{singular_underscore_table_name})) do
+    field :#{plural_underscore_table_name}, non_null(:#{singular_underscore_table_name}_connection) do
       #{args}
       resolve &Resolvers.#{singular_camelized_table_name}.#{plural_underscore_table_name}/3
     end
@@ -437,7 +457,7 @@ defmodule AbsintheGen.SchemaGenerator do
       end
     
       def #{name}(_, args, _) do
-        {:ok, #{singular_camelized_table}.list_#{name}(args)}
+        {:ok, %{ nodes: #{singular_camelized_table}.list_#{name}(args), args: args }}
       end
       """
     else
@@ -498,6 +518,25 @@ defmodule AbsintheGen.SchemaGenerator do
 
     def plugins do
       [Absinthe.Middleware.Dataloader] ++ Absinthe.Plugin.defaults()
+    end
+    """
+  end
+
+  def generate_connection(table) do
+    %{singular_underscore_table_name: singular_underscore_table_name} =
+      Utils.get_table_names(table.name)
+
+    """
+    object :#{singular_underscore_table_name}_connection do
+      field :nodes, list_of(non_null(:#{singular_underscore_table_name}))
+
+      field :page_info, non_null(:page_info) do
+        resolve Connections.resolve_page_info()
+      end
+
+      field :total_count, :integer do
+        resolve(fn %{nodes: nodes}, _, _ -> {:ok, length(nodes)} end)
+      end
     end
     """
   end

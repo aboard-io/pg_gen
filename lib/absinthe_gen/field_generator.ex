@@ -33,7 +33,7 @@ defmodule AbsintheGen.FieldGenerator do
       end
 
     field
-    |> process_options(options, type)
+    |> process_options(options, type, name)
   end
 
   def to_string({:belongs_to, name, type, options}, _table) do
@@ -42,26 +42,26 @@ defmodule AbsintheGen.FieldGenerator do
       |> wrap_non_null_type(options)
 
     "field :#{Inflex.singularize(name)}, #{type_str} do"
-    |> process_options(options, type)
+    |> process_options(options, type, name)
     |> with_end
   end
 
   def to_string({:has_many, name, type, options}, table) do
-    type_str = "list_of(non_null(#{process_type(type, options)}))"
+    type_str = "non_null(#{process_type(type, options)}_connection)"
     args_str = generate_args_for_object(table)
 
     "field :#{Inflex.pluralize(name)}, #{type_str} do"
-    |> process_options(options, type)
+    |> process_options(options, type, name)
     |> append_line(args_str)
     |> with_end
   end
 
   def to_string({:many_to_many, name, type, options}, table) do
-    type_str = "list_of(non_null(#{process_type(type, options)}))"
+    type_str = "non_null(#{process_type(type, options)}_connection)"
     args_str = generate_args_for_object(table)
 
     "field :#{name}, #{type_str} do"
-    |> process_options(options, type)
+    |> process_options(options, type, name)
     |> append_line(args_str)
     |> with_end
   end
@@ -89,7 +89,7 @@ defmodule AbsintheGen.FieldGenerator do
     end
   end
 
-  def process_options(base, options, original_type \\ "") do
+  def process_options(base, options, original_type \\ "", name \\ "") do
     Enum.reduce(options, base, fn {k, v}, acc ->
       case k do
         :description ->
@@ -100,17 +100,10 @@ defmodule AbsintheGen.FieldGenerator do
 
         :resolve_method ->
           case v do
-            {:dataloader, opts} ->
-              prefix =
-                if is_nil(opts[:prefix]) do
-                  ""
-                else
-                  opts[:prefix] <> "."
-                end
-
+            {:dataloader, _opts} ->
               """
               #{acc}
-                resolve dataloader(#{prefix}Repo.#{original_type})
+                resolve Connections.resolve(Repo.#{original_type}, :#{name})
               """
           end
 
