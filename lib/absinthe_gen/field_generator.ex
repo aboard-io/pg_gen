@@ -22,46 +22,46 @@ defmodule AbsintheGen.FieldGenerator do
       process_type(@type_map[type] || type, options)
       |> wrap_non_null_type(options)
 
-    field = "field :#{name}, #{type_str}"
+    str = "field :#{name}, #{type_str}"
 
     {description, options} = Keyword.pop(options, :description)
 
-    field =
+    str =
       case description do
-        nil -> field
-        description -> field <> ", description: \"#{description}\""
+        nil -> str
+        description -> str <> ", description: \"#{description}\""
       end
 
-    field
-    |> process_options(options, type, name)
+    str
+    |> process_options({:field, name, type, options})
   end
 
-  def to_string({:belongs_to, name, type, options}, _table) do
+  def to_string({:belongs_to, name, type, options} = field, _table) do
     type_str =
       process_type(type, options)
       |> wrap_non_null_type(options)
 
     "field :#{Inflex.singularize(name)}, #{type_str} do"
-    |> process_options(options, type, name)
+    |> process_options(field)
     |> with_end
   end
 
-  def to_string({:has_many, name, type, options}, table) do
+  def to_string({:has_many, name, type, options} = field, table) do
     type_str = "non_null(#{process_type(type, options)}_connection)"
     args_str = generate_args_for_object(table)
 
     "field :#{Inflex.pluralize(name)}, #{type_str} do"
-    |> process_options(options, type, name)
+    |> process_options(field)
     |> append_line(args_str)
     |> with_end
   end
 
-  def to_string({:many_to_many, name, type, options}, table) do
+  def to_string({:many_to_many, name, type, options} = field, table) do
     type_str = "non_null(#{process_type(type, options)}_connection)"
     args_str = generate_args_for_object(table)
 
     "field :#{name}, #{type_str} do"
-    |> process_options(options, type, name)
+    |> process_options(field)
     |> append_line(args_str)
     |> with_end
   end
@@ -89,7 +89,7 @@ defmodule AbsintheGen.FieldGenerator do
     end
   end
 
-  def process_options(base, options, original_type \\ "", name \\ "") do
+  def process_options(base, {field_or_assoc, name, type, options}) do
     Enum.reduce(options, base, fn {k, v}, acc ->
       case k do
         :description ->
@@ -101,10 +101,19 @@ defmodule AbsintheGen.FieldGenerator do
         :resolve_method ->
           case v do
             {:dataloader, _opts} ->
-              """
-              #{acc}
-                resolve Connections.resolve(Repo.#{original_type}, :#{name})
-              """
+              case field_or_assoc do
+                :belongs_to ->
+                  """
+                  #{acc}
+                    resolve dataloader(Repo.#{type})
+                  """
+
+                _ ->
+                  """
+                  #{acc}
+                    resolve Connections.resolve(Repo.#{type}, :#{name})
+                  """
+              end
           end
 
         _ ->
