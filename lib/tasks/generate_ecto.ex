@@ -255,8 +255,6 @@ defmodule Mix.Tasks.PgGen.GenerateEcto do
               end
 
             {{_dir, field} = order_by, value} ->
-              IO.puts("Do after value")
-
               query
               |> where(^build_condition(field, %{greater_than: value}))
               |> order_by(^sort_with_limit(order_by, opts))

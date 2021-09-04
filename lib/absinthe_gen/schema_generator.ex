@@ -115,6 +115,7 @@ defmodule AbsintheGen.SchemaGenerator do
       import_types Absinthe.Type.Custom
       import_types(#{module_name_web}.Schema.Types.Custom.JSON)
       import_types(#{module_name_web}.Schema.Types.Custom.UUID4)
+      import_types(#{module_name_web}.Schema.Types.Custom.UUID62)
       import_types(#{module_name_web}.Schema.Types.Custom.Cursor)
 
       alias #{module_name_web}.Resolvers
@@ -217,7 +218,7 @@ defmodule AbsintheGen.SchemaGenerator do
   def generate_condition_and_filter_input(_), do: ""
 
   def generate_scalar_filters() do
-    ["datetime", "uuid4", "boolean", "string", "date", "integer"]
+    ["datetime", "uuid4", "boolean", "string", "date", "integer", "uuid62"]
     |> Enum.map(&generate_input_filter/1)
     |> Enum.join("\n\n")
   end

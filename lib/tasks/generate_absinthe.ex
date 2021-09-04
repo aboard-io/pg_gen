@@ -156,6 +156,7 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
     File.write!("#{types_path}/json.ex", json_type(module_name))
     File.write!("#{types_path}/uuid4.ex", uuid_type(module_name))
     File.write!("#{types_path}/cursor.ex", cursor_type(module_name))
+    File.write!("#{types_path}/uuid62.ex", uuid62_type(module_name))
   end
 
   def schema_template(module_name, type_names) do
@@ -221,6 +222,41 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
     end
     """
     |> Utils.format_code!()
+  end
+
+  def uuid62_type(module_name) do
+    """
+    defmodule #{module_name}.Types.Custom.UUID62 do
+      use Absinthe.Schema.Notation
+
+      scalar :uuid62, name: "UUID62" do
+        description(\"\"\"
+        The `UUID62` scalar type represents UUID4 compliant string encoded to base62.
+        \"\"\")
+
+        serialize(&encode/1)
+        parse(&decode/1)
+      end
+
+      @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
+      @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
+      defp decode(%Absinthe.Blueprint.Input.Null{}) do
+        {:ok, nil}
+      end
+
+      defp decode(%{value: value}) do
+        {:ok, Base62UUID.decode!(value)}
+      end
+
+      defp decode(_) do
+        :error
+      end
+
+      defp encode(val) do
+        Base62UUID.encode!(val)
+      end
+    end
+    """
   end
 
   def uuid_type(module_name) do
@@ -360,8 +396,6 @@ defmodule Mix.Tasks.PgGen.GenerateAbsinthe do
           \"\"\"
       def resolve_page_info() do
         fn %{nodes: nodes, args: parent_args}, _, _ ->
-          IO.inspect(parent_args, label: "args")
-
           {_dir, col} =
             order_by =
             case Map.get(parent_args, :order_by) do

@@ -403,6 +403,18 @@ defmodule Introspection.Model do
       )
       |> Enum.filter(&(!is_nil(&1)))
 
+    boolean_cols =
+      table.attributes
+      |> Enum.filter(fn
+        %{type: %{name: "bool"}} -> true
+        _ -> false
+      end)
+      |> Enum.map(fn attr -> {attr.name, attr.type} end)
+
+    indexed_attrs =
+      (indexed_attrs ++ boolean_cols)
+      |> Enum.uniq()
+
     Map.put(table, :indexed_attrs, indexed_attrs)
   end
 end

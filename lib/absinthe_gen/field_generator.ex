@@ -6,7 +6,7 @@ defmodule AbsintheGen.FieldGenerator do
     "citext" => "string",
     "tsvector" => "string",
     "timestamptz" => "datetime",
-    "uuid" => "uuid4",
+    "uuid" => "uuid62",
     "jsonb" => "json",
     "bool" => "boolean",
     "int4" => "integer"
