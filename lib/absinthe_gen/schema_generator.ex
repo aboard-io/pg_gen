@@ -169,7 +169,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     """
     field :#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
-      arg :id, non_null(:id)
+      arg :id, non_null(:uuid62)
       resolve &Resolvers.#{singular_camelized_table_name}.#{singular_underscore_table_name}/3
     end
     field :#{plural_underscore_table_name}, non_null(:#{singular_underscore_table_name}_connection) do
