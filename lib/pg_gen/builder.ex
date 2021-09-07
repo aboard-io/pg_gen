@@ -106,7 +106,9 @@ defmodule PgGen.Builder do
         %{type: :foreign_key, referenced_table: %{table: %{name: table_name}} = referenced_table},
         attribute
       ) do
-    options = build_reference_options(attribute, referenced_table, table_name)
+    options =
+      build_reference_options(attribute, referenced_table, table_name)
+      |> Keyword.merge(build_field_options(attribute))
 
     {:belongs_to, (format_assoc(options[:fk], table_name) || table_name) |> Inflex.singularize(),
      table_name_to_queryable(table_name), options}

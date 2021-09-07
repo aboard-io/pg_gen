@@ -11,7 +11,22 @@ defmodule EctoGen.TableGenerator do
     required_fields =
       attributes
       |> Enum.filter(&is_required/1)
-      |> Enum.map(fn {_, name, _, _} -> ":#{name}" end)
+      |> Enum.map(fn 
+        {:field, name, _, _} -> ":#{name}"
+        {:belongs_to, name, _, opts} ->
+          ":" <> Keyword.get(opts, :fk, "#{name}_id")
+      end)
+
+    foreign_key_constraints =
+      attributes
+      |> Enum.filter(fn
+        {:belongs_to, _, _, _} -> true
+        {_, _, _, _} -> false
+      end)
+      |> Enum.map(fn 
+        {_, name, _, opts} ->
+          ":" <> Keyword.get(opts, :fk, "#{name}_id")
+      end)
 
     all_fields =
       attributes
@@ -111,6 +126,10 @@ defmodule EctoGen.TableGenerator do
               #{singular_lowercase}
               |> cast(attrs, fields)
               |> validate_required(required_fields)
+              #{Enum.map(foreign_key_constraints, fn field_name ->
+                "|> foreign_key_constraint(#{field_name})"
+              end)
+              |> Enum.join("\n")}
               # TODO should we support unique constraints in ecto
               # or just let Postgres do it?
               # |> unique_constraint(:email)
@@ -164,7 +183,194 @@ defmodule EctoGen.TableGenerator do
     """
   end
 
+  def dynamic_query_template(module_name) do
+    """
+      defmodule #{module_name}.Repo.Filter do
+        @moduledoc \"\"\"
+        Basic concept for dynamic querying from:
+
+        https://github.com/pentacent/keila/blob/2af0a2f91b0916f7d757f3c24d2955d9550cc6b3/lib/keila/contacts/query.ex
+
+        Module for dynamic querying.
+        The `apply/2` function takes two arguments: a query (`Ecto.Query.t()`) and options
+        for filtering and sorting the resulting data set.
+        ## Filtering
+        Using the `:filter` option, you can supply a MongoDB-style query map.
+        ### Supported operators:
+        - after: Cursor
+        - before: Cursor
+        - condition
+        - filter:
+          - equalTo
+          - greaterThan
+          - greaterThanOrEqualTo
+          - isNull
+          - lessThan
+          - lessThanOrEqualTo
+          - notEqualTo
+        - first: Int
+        - last: Int
+        - orderBy
+        \"\"\"
+
+        import Ecto.Query, warn: false
+
+        @type opts :: map()
+
+        @spec apply(Ecto.Query.t(), opts) :: Ecto.Query.t()
+        def apply(query, opts) do
+          query
+          |> maybe_condition(opts)
+          |> maybe_filter(opts)
+          |> maybe_paginate(opts)
+          |> maybe_sort(opts)
+          |> maybe_limit(opts)
+        end
+
+        defp maybe_condition(query, opts) do
+          case Map.get(opts, :condition) do
+            input when is_map(input) -> condition(query, input)
+            _ -> query
+          end
+        end
+
+        defp condition(query, input), do: query |> where(^Enum.into(input, Keyword.new()))
+
+        defp maybe_filter(query, opts) do
+          case Map.get(opts, :filter) do
+            input when is_map(input) -> filter(query, input)
+            _ -> query
+          end
+        end
+
+        defp filter(query, input) do
+          from(q in query, where: ^build_and(input))
+        end
+
+        defp build_and(input) do
+          Enum.reduce(input, nil, fn {k, v}, conditions ->
+            condition = build_condition(k, v)
+
+            if conditions == nil,
+              do: condition,
+              else: dynamic([c], ^condition and ^conditions)
+          end)
+        end
+
+        defp build_or(input) do
+          Enum.reduce(input, nil, fn input, conditions ->
+            condition = build_and(input)
+
+            if conditions == nil,
+              do: condition,
+              else: dynamic([c], ^condition or ^conditions)
+          end)
+        end
+
+        defp build_condition(field, input) when is_binary(field),
+          do: build_condition(String.to_existing_atom(field), input)
+
+        defp build_condition(field, %{greater_than: value}),
+          do: dynamic([c], field(c, ^field) > ^value)
+
+        defp build_condition(field, %{greater_than_or_equal_to: value}),
+          do: dynamic([c], field(c, ^field) >= ^value)
+
+        defp build_condition(field, %{less_than: value}),
+          do: dynamic([c], field(c, ^field) < ^value)
+
+        defp build_condition(field, %{less_than_or_equal_to: value}),
+          do: dynamic([c], field(c, ^field) <= ^value)
+
+        defp build_condition(field, %{equal_to: value}),
+          do: dynamic([c], field(c, ^field) == ^value)
+
+        defp build_condition(field, %{not_equal_to: value}),
+          do: dynamic([c], field(c, ^field) != ^value)
+
+        defp build_condition(field, %{is_null: true}),
+          do: dynamic([c], is_nil(field(c, ^field)))
+
+        defp build_condition(field, %{is_null: false}),
+          do: dynamic([c], not is_nil(field(c, ^field)))
+
+        defp build_condition(field, value) when is_binary(value) or is_number(value),
+          do: dynamic([c], field(c, ^field) == ^value)
+
+        defp build_condition(field, %{"$in" => value}) when is_list(value),
+          do: dynamic([c], field(c, ^field) in ^value)
+
+        defp build_condition("$or", input),
+          do: build_or(input)
+
+        defp build_condition("$not", input),
+          do: dynamic(not (^build_and(input)))
+
+        defp build_condition(field, value),
+          do: raise(~s{Unsupported filter "\#{field}": "\#{inspect(value)}"})
+
+        defp maybe_sort(query, opts) do
+          case Map.get(opts, :order_by) do
+            nil -> query
+            order_opts -> query |> order_by(^sort_with_limit(order_opts, opts))
+          end
+        end
+
+        def sort_with_limit(order_opts, opts) do
+          case Map.get(opts, :last) do
+            nil ->
+              order_opts
+
+            # If we want the get the last N rows, flip the order in the query,
+            # then reverse results later (in the resolver?)
+            num when is_integer(num) ->
+              case order_opts do
+                [{:asc, column} | rest] -> [{:desc, column} | rest]
+                [{:desc, column} | rest] -> [{:asc, column} | rest]
+                {:asc, column} -> {:desc, column}
+                {:desc, column} -> {:asc, column}
+              end
+          end
+        end
+
+        defp maybe_limit(query, opts) do
+          case Map.get(opts, :first) do
+            nil ->
+              case Map.get(opts, :last) do
+                nil -> query
+                num -> query |> limit(^num)
+              end
+
+            num ->
+              query |> limit(^num)
+          end
+        end
+
+        defp maybe_paginate(query, opts) do
+          case Map.get(opts, :after) do
+            nil ->
+              case Map.get(opts, :before) do
+                nil ->
+                  query
+
+                {{_dir, field} = order_by, value} ->
+                  query
+                  |> where(^build_condition(field, %{less_than: value}))
+                  |> order_by(^sort_with_limit(order_by, opts))
+              end
+
+            {{_dir, field} = order_by, value} ->
+              query
+              |> where(^build_condition(field, %{greater_than: value}))
+              |> order_by(^sort_with_limit(order_by, opts))
+          end
+        end
+      end
+    """
+    |> Utils.format_code!()
+  end
+
   def is_required({_, _, _, opts}) do
-    Keyword.get(opts, :is_not_null, false) && !Keyword.get(opts, :has_default)
+    !Keyword.get(opts, :has_default) && Keyword.get(opts, :is_not_null)
   end
 end

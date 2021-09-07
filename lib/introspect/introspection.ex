@@ -112,7 +112,68 @@ defmodule Introspection do
         password: db_options.password
       )
 
-    Postgrex.query!(pid, query, args)
+    result = Postgrex.query!(pid, query, args)
+    GenServer.stop(pid)
+    result
+  end
+
+  @doc """
+  Installs a schema that watches changes. See the full sql at `./watch_fixtures.sql`
+
+  This schema is taken directly from Postgraphile
+  """
+  def install_watcher(db_options) do
+    [
+      "DROP SCHEMA IF EXISTS postgraphile_watch CASCADE;",
+      "CREATE SCHEMA postgraphile_watch;",
+      """
+      CREATE FUNCTION postgraphile_watch.notify_watchers_ddl ()
+        RETURNS event_trigger
+        AS $$
+      BEGIN
+        PERFORM
+          pg_notify('postgraphile_watch', json_build_object('type', 'ddl', 'payload', (
+                SELECT
+                  json_agg(json_build_object('schema', schema_name, 'command', command_tag))
+                FROM pg_event_trigger_ddl_commands () AS x))::text);
+      END;
+      $$
+      LANGUAGE plpgsql;
+      """,
+      """
+      CREATE FUNCTION postgraphile_watch.notify_watchers_drop ()
+        RETURNS event_trigger
+        AS $$
+      BEGIN
+        PERFORM
+          pg_notify('postgraphile_watch', json_build_object('type', 'drop', 'payload', (
+                SELECT
+                  json_agg(DISTINCT x.schema_name)
+                FROM pg_event_trigger_dropped_objects () AS x))::text);
+      END;
+      $$
+      LANGUAGE plpgsql;
+      """,
+      """
+      CREATE EVENT TRIGGER postgraphile_watch_ddl ON ddl_command_end
+      WHEN tag IN (
+      -- Ref: https://www.postgresql.org/docs/10/static/event-trigger-matrix.html
+      'ALTER AGGREGATE', 'ALTER DOMAIN', 'ALTER EXTENSION', 'ALTER FOREIGN TABLE', 'ALTER FUNCTION', 'ALTER POLICY',
+      'ALTER SCHEMA', 'ALTER TABLE', 'ALTER TYPE', 'ALTER VIEW', 'COMMENT',
+      'CREATE AGGREGATE', 'CREATE DOMAIN', 'CREATE EXTENSION', 'CREATE FOREIGN TABLE', 'CREATE FUNCTION',
+      'CREATE INDEX', 'CREATE POLICY', 'CREATE RULE', 'CREATE SCHEMA', 'CREATE TABLE',
+      'CREATE TABLE AS', 'CREATE VIEW', 'DROP AGGREGATE', 'DROP DOMAIN', 'DROP EXTENSION',
+      'DROP FOREIGN TABLE', 'DROP FUNCTION', 'DROP INDEX', 'DROP OWNED', 'DROP POLICY',
+      'DROP RULE', 'DROP SCHEMA', 'DROP TABLE', 'DROP TYPE', 'DROP VIEW',
+      'GRANT', 'REVOKE', 'SELECT INTO')
+      EXECUTE PROCEDURE postgraphile_watch.notify_watchers_ddl ();
+      """,
+      """
+      CREATE EVENT TRIGGER postgraphile_watch_drop ON sql_drop
+      EXECUTE PROCEDURE postgraphile_watch.notify_watchers_drop ();
+      """
+    ]
+    |> Enum.map(fn sql -> run_query(sql, db_options) end)
   end
 
   def parse_tags(val) when is_nil(val), do: nil
@@ -158,36 +219,4 @@ defmodule Introspection do
       end
     end)
   end
-
-  # remove below for now since i'm skipping enums... i don't believe we
-  # have any enum constraints
-
-  # def is_enum_constraint(class, constraint, is_enum_table) do
-  #   if constraint["classId"] == class["id"] do
-  #     true
-  #     is_primary_key = constraint["type"] == "p"
-  #     is_unique_constraint = constraint["type"] == "u"
-  #
-  #     if is_primary_key || is_unique_constraint do
-  #       is_explicit_enum_constraint =
-  #         constraint["tags"]["enum"] == true || is_binary(constraint["tags"]["enum"])
-  #
-  #       is_primary_key_of_enum_table_constraint = is_primary_key && is_enum_table
-  #
-  #       if is_explicit_enum_constraint || is_primary_key_of_enum_table_constraint do
-  #         has_exactly_one_column = constraint["keyAttributeNums"] |> length == 1
-  #
-  #         if !has_exactly_one_column do
-  #           raise """
-  #           Enum table \"#{class["namespaceName"]}\"."\#{class["name"]}" enum constraint '#{constraint["name"]}' is composite; it should have exactly one column (found: #{constraint["keyAttributeNums"] |> length})
-  #           """
-  #         end
-  #
-  #         true
-  #       end
-  #     end
-  #   else
-  #     false
-  #   end
-  # end
 end

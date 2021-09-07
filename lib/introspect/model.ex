@@ -39,6 +39,7 @@ defmodule Introspection.Model do
         references
       )
       |> Enum.map(fn table -> add_indexes_to_table(table, indexes_by_table_id[table.id]) end)
+      |> Enum.map(&Map.put(&1, :table_names, PgGen.Utils.get_table_names(&1.name)))
 
     %{tables: tables, enum_types: enum_types}
   end

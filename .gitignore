@@ -28,3 +28,5 @@ absinthe_gen-*.tar
 /static
 
 /example
+/example_todo
+scratch.ex

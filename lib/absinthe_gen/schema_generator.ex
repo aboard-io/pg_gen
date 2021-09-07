@@ -102,7 +102,8 @@ defmodule AbsintheGen.SchemaGenerator do
         mutations,
         inputs,
         scalar_filters,
-        connections
+        connections,
+        subscriptions
       ) do
     module_name = "#{PgGen.LocalConfig.get_app_name() |> Macro.camelize()}"
     module_name_web = "#{module_name}Web"
@@ -145,6 +146,14 @@ defmodule AbsintheGen.SchemaGenerator do
       mutation do
         #{mutations}
       end
+
+      #{if subscriptions != "" do
+      """
+      subscription do
+        #{subscriptions}
+      end
+      """
+    end}
 
       #{inputs}
 
@@ -440,25 +449,32 @@ defmodule AbsintheGen.SchemaGenerator do
       deletable: deletable
     } = table
 
+    %{
+      singular_camelized_table_name: singular_camelized_table_name,
+      singular_underscore_table_name: singular_underscore_table_name
+    } = Utils.get_table_names(name)
+
     module_name =
-      "#{app_name}Web.Resolvers.#{Macro.camelize(name) |> Inflex.singularize()}"
+      "#{app_name}Web.Resolvers.#{singular_camelized_table_name}"
       |> Macro.camelize()
 
-    singular_camelized_table = Macro.camelize(name) |> Inflex.singularize()
-    singular_table = Inflex.singularize(name)
+    extensions_module = Module.concat(Elixir, "#{module_name}.Extends")
 
     """
     defmodule #{module_name} do
-      alias #{Macro.camelize(app_name)}.Contexts.#{singular_camelized_table}
+      alias #{Macro.camelize(app_name)}.Contexts.#{singular_camelized_table_name}
+      #{if insertable || updatable || deletable do
+      "alias #{app_name}Web.Schema.ChangesetErrors"
+    end}
 
       #{if selectable do
       """
-      def #{singular_table}(_, %{id: id}, _) do
-        {:ok, #{singular_camelized_table}.get_#{singular_table}!(id)}
+      def #{singular_underscore_table_name}(_, %{id: id}, _) do
+        {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)}
       end
     
       def #{name}(_, args, _) do
-        {:ok, %{ nodes: #{singular_camelized_table}.list_#{name}(args), args: args }}
+        {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args), args: args }}
       end
       """
     else
@@ -467,8 +483,15 @@ defmodule AbsintheGen.SchemaGenerator do
 
       #{if insertable do
       """
-      def create_#{singular_table}(_, %{input: input}, _) do
-        #{app_name}.Contexts.#{singular_camelized_table}.create_#{singular_table}(input)
+      def create_#{singular_underscore_table_name}(_, %{input: input}, _) do
+        case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) do
+          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
+          {:error, changeset} ->
+            {:error,
+              message: "Could not create #{singular_camelized_table_name}",
+              details: ChangesetErrors.error_details(changeset)
+            }
+        end
       end
       """
     else
@@ -477,9 +500,16 @@ defmodule AbsintheGen.SchemaGenerator do
 
       #{if updatable do
       """
-      def update_#{singular_table}(_, %{input: input}, _) do
-        #{singular_table} = #{app_name}.Contexts.#{singular_camelized_table}.get_#{singular_table}!(input.id)
-        #{app_name}.Contexts.#{singular_camelized_table}.update_#{singular_table}(#{singular_table}, input.patch)
+      def update_#{singular_underscore_table_name}(_, %{input: input}, _) do
+        #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
+        case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch) do
+          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
+          {:error, changeset} ->
+            {:error,
+              message: "Could not update #{singular_camelized_table_name}",
+              details: ChangesetErrors.error_details(changeset)
+            }
+        end
       end
       """
     else
@@ -487,10 +517,25 @@ defmodule AbsintheGen.SchemaGenerator do
     end}
       #{if deletable do
       """
-      def delete_#{singular_table}(_, %{id: id}, _) do
-        #{singular_table} = #{app_name}.Contexts.#{singular_camelized_table}.get_#{singular_table}!(id)
-        #{app_name}.Contexts.#{singular_camelized_table}.delete_#{singular_table}(#{singular_table})
+      def delete_#{singular_underscore_table_name}(_, %{id: id}, _) do
+        #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
+        case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
+          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
+          {:error, changeset} ->
+            {:error,
+              message: "Could not update #{singular_camelized_table_name}",
+              details: ChangesetErrors.error_details(changeset)
+            }
+        end
       end
+      """
+    else
+      ""
+    end}
+
+      #{if does_module_exist(extensions_module) do
+      """
+        #{extensions_module.extensions() |> Enum.join("\n\n")}
       """
     else
       ""
@@ -540,5 +585,304 @@ defmodule AbsintheGen.SchemaGenerator do
       end
     end
     """
+  end
+
+  def connections_resolver_template(module_name) do
+    """
+    defmodule #{module_name}.Resolvers.Connections do
+      import Absinthe.Resolution.Helpers, only: [on_load: 2]
+
+      @doc \"\"\"
+      Usage in an Absinthe schema:
+
+      ```elixir
+      resolve Connections.resolve(Example.Repo.Workflow, :workflows_by_workflow_members)
+      ```
+      \"\"\"
+      def resolve(repo, field_name) do
+        fn parent, args, %{context: %{loader: loader}} ->
+          loader
+          |> Dataloader.load(repo, {field_name, args}, parent)
+          |> on_load(fn loader_with_data ->
+            nodes =
+              Dataloader.get(
+                loader_with_data,
+                repo,
+                {field_name, args},
+                parent
+              )
+
+            # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
+            # to make the query work with  alimit.
+            # Here we put the records back in the expected order
+            nodes =
+              case is_integer(Map.get(args, :last)) do
+                false ->
+                  nodes
+
+                true ->
+                  if is_integer(Map.get(args, :first)), do: nodes, else: Enum.reverse(nodes)
+              end
+
+            # passing args to children so we can use order_by to generate cursors
+            {:ok, %{nodes: nodes, args: args}}
+          end)
+        end
+      end
+
+          @doc \"\"\"
+          Usage in an Absinthe schema:
+
+          ```elixir
+          resolve Connections.resolve_page_info()
+          ```
+          \"\"\"
+      def resolve_page_info() do
+        fn %{nodes: nodes, args: parent_args}, _, _ ->
+          {_dir, col} =
+            order_by =
+            case Map.get(parent_args, :order_by) do
+              nil -> raise "All queries should have a default order_by"
+              [{dir, col} | _] -> {dir, col}
+              {dir, col} -> {dir, col}
+            end
+
+          start_cursor_val =
+            case nodes do
+              [] -> nil
+              [node | _] -> {order_by, Map.get(node, col)}
+            end
+
+          end_cursor_val =
+            case Enum.reverse(nodes) do
+              [] -> nil
+              [node | _] -> {order_by, Map.get(node, col)}
+            end
+
+          {:ok, %{start_cursor: start_cursor_val, end_cursor: end_cursor_val}}
+        end
+      end
+    end
+    """
+    |> Utils.format_code!()
+  end
+
+  def changeset_errors_template(module_name) do
+    """
+    defmodule #{module_name}.Schema.ChangesetErrors do
+      @doc \"\"\"
+      Traverses the changeset errors and returns a map of 
+      error messages. For example:
+
+      %{start_date: ["can't be blank"], end_date: ["can't be blank"]}
+      \"\"\"
+      def error_details(changeset) do
+        Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+          Enum.reduce(opts, msg, fn {key, value}, acc ->
+            String.replace(acc, "%{\#{key}}", to_string(value))
+          end)
+        end)
+      end
+    end
+    """
+    |> Utils.format_code!()
+  end
+
+  def json_type(module_name) do
+    """
+      defmodule #{module_name}.Types.Custom.JSON do
+      @moduledoc \"\"\"
+      The Json scalar type allows arbitrary JSON values to be passed in and out.
+      Requires `{ :jason, "~> 1.1" }` package: https://github.com/michalmuskala/jason
+      \"\"\"
+      use Absinthe.Schema.Notation
+
+      scalar :json, name: "Json" do
+        description(\"\"\"
+        The `Json` scalar type represents arbitrary json string data, represented as UTF-8
+        character sequences. The Json type is most often used to represent a free-form
+        human-readable json string.
+        \"\"\")
+
+        serialize(&encode/1)
+        parse(&decode/1)
+      end
+
+      @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
+      @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
+      defp decode(%Absinthe.Blueprint.Input.String{value: value}) do
+        case Jason.decode(value) do
+          {:ok, result} -> {:ok, result}
+          _ -> :error
+        end
+      end
+
+      defp decode(%Absinthe.Blueprint.Input.Null{}) do
+        {:ok, nil}
+      end
+
+      defp decode(_) do
+        :error
+      end
+
+      defp encode(value), do: value
+    end
+    """
+    |> Utils.format_code!()
+  end
+
+  def uuid62_type(module_name) do
+    """
+    defmodule #{module_name}.Types.Custom.UUID62 do
+      use Absinthe.Schema.Notation
+
+      scalar :uuid62, name: "UUID62" do
+        description(\"\"\"
+        The `UUID62` scalar type represents UUID4 compliant string encoded to base62.
+        \"\"\")
+
+        serialize(&encode/1)
+        parse(&decode/1)
+      end
+
+      @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
+      @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
+      defp decode(%Absinthe.Blueprint.Input.Null{}) do
+        {:ok, nil}
+      end
+
+      defp decode(%{value: value}) do
+        {:ok, Base62UUID.decode!(value)}
+      end
+
+      defp decode(_) do
+        :error
+      end
+
+      defp encode(val) do
+        Base62UUID.encode!(val)
+      end
+    end
+    """
+  end
+
+  def uuid_type(module_name) do
+    """
+      defmodule #{module_name}.Types.Custom.UUID4 do
+      @moduledoc \"\"\"
+      The UUID4 scalar type allows UUID4 compliant strings to be passed in and out.
+      Requires `{ :ecto, ">= 0.0.0" }` package: https://github.com/elixir-ecto/ecto
+      \"\"\"
+      use Absinthe.Schema.Notation
+
+      alias Ecto.UUID
+
+      scalar :uuid4, name: "UUID4" do
+        description(\"\"\"
+        The `UUID4` scalar type represents UUID4 compliant string data, represented as UTF-8
+        character sequences. The UUID4 type is most often used to represent unique
+        human-readable ID strings.
+        \"\"\")
+
+        serialize(&encode/1)
+        parse(&decode/1)
+      end
+
+      @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
+      @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
+      defp decode(%Absinthe.Blueprint.Input.String{value: value}) do
+        UUID.cast(value)
+      end
+
+      defp decode(%Absinthe.Blueprint.Input.Null{}) do
+        {:ok, nil}
+      end
+
+      defp decode(_) do
+        :error
+      end
+
+      defp encode(value), do: value
+    end
+    """
+    |> Utils.format_code!()
+  end
+
+  def cursor_type(module_name) do
+    """
+      defmodule #{module_name}.Types.Custom.Cursor do
+        @moduledoc \"\"\"
+        The Cursor scalar type
+        \"\"\"
+        use Absinthe.Schema.Notation
+
+        scalar :cursor, name: "Cursor" do
+          description(\"\"\"
+          A cursor that can be used for pagination.
+          \"\"\")
+
+          serialize(&encode/1)
+          parse(&decode/1)
+        end
+
+        @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
+        @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
+        defp decode(%Absinthe.Blueprint.Input.String{value: value}) do
+          [dir, col_name, value] = value |> Base.decode64!() |> Jason.decode!()
+          {:ok, {{String.to_existing_atom(dir), String.to_existing_atom(col_name)}, value}}
+        end
+
+        defp decode(%Absinthe.Blueprint.Input.Null{}) do
+          {:ok, nil}
+        end
+
+        defp decode(_) do
+          :error
+        end
+
+        defp encode(nil), do: nil
+        defp encode(""), do: nil
+        defp encode({{dir, col_name}, value}),
+          do: [dir, col_name, value] |> Jason.encode!() |> Base.encode64()
+
+      end
+
+    """
+    |> Utils.format_code!()
+  end
+
+  def custom_subscriptions(module_prefix) do
+    module = Module.concat(Elixir, "#{module_prefix}.Schema.Extends")
+
+    if does_module_exist(module) do
+      module.subscriptions() |> Enum.join("\n\n")
+    else
+      ""
+    end
+  end
+
+  def inject_custom_queries(query_defs, module_prefix) do
+    module = Module.concat(Elixir, "#{module_prefix}.Schema.Extends")
+
+    if does_module_exist(module) do
+      query_defs ++ module.query_extensions()
+    else
+      query_defs
+    end
+  end
+
+  def does_module_exist(mod_str) when is_binary(mod_str) do
+    module = Module.concat(Elixir, mod_str)
+    does_module_exist(module)
+  end
+
+  def does_module_exist(module) when is_atom(module) do
+    IO.puts("Does module #{module} exist?")
+
+    case Code.ensure_compiled(module) do
+      {:module, ^module} -> true
+      _ -> false
+    end
+    |> IO.inspect()
   end
 end
