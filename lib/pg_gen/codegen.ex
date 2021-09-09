@@ -60,19 +60,6 @@ defmodule PgGen.Codegen do
     GenServer.cast(__MODULE__, :reload_code_with_debounce)
   end
 
-  # @impl true
-  # # def handle_call({:listen, "postgraphile_watch"}, _from, :event_received)
-  # def handle_call({:listen, "postgraphile_watch"}, ref, state) do
-  #   IO.puts("we are watching now")
-  #   {:reply, {:ok, self()}, state}
-  # end
-  #
-  # def handle_call({:notification, notification_pid, listen_ref, channel, message}, state) do
-  #   IO.inspect(channel)
-  #   IO.inspect(message)
-  #   {:reply, nil, state}
-  # end
-  #
   @impl true
   def handle_call(:get_introspection, _from, %{tables: tables} = state) do
     {:reply, tables, state}
@@ -94,9 +81,8 @@ defmodule PgGen.Codegen do
       Process.cancel_timer(debounce_ref)
     end
 
-    # wait 5ms to debounce db events
-    debounce_ref = Process.send_after(__MODULE__, :reload_code, 5)
-    # load_all_code(state)
+    # wait a bit to debounce db events
+    debounce_ref = Process.send_after(__MODULE__, :reload_code, 25)
     {:noreply,
      state
      |> Map.put(:debounce_ref, debounce_ref)}
@@ -135,9 +121,10 @@ defmodule PgGen.Codegen do
          %{
            ecto: %{repos: repos, contexts: contexts},
            app: app,
-           absinthe: %{resolvers: resolvers, graphql_schema: graphql_schema}
+           absinthe: %{resolvers: resolvers, graphql_schema: graphql_schema, type_defs: type_defs}
          } = state
        ) do
+    Logger.debug("Reloading code")
     repo_file_path = PgGen.LocalConfig.get_repo_path()
     contexts_file_path = PgGen.LocalConfig.get_contexts_path()
 
@@ -156,16 +143,12 @@ defmodule PgGen.Codegen do
     end)
     |> Enum.to_list()
 
-    IO.puts("Done loading repos...")
-
     contexts
     |> Flow.from_enumerable()
     |> Flow.map(fn {name, code_str} ->
       HotModule.load(code_str, file_path: "#{contexts_file_path}/#{name}.ex")
     end)
     |> Enum.to_list()
-
-    IO.puts("Done loading contexts...")
 
     graphql_schema_path = PgGen.LocalConfig.get_graphql_schema_path()
     types_path = graphql_schema_path <> "/types"
@@ -192,7 +175,13 @@ defmodule PgGen.Codegen do
       file_path: "#{types_path}/uuid62.ex"
     )
 
-    IO.puts("Loading resolvers")
+    type_defs
+    |> Flow.from_enumerable()
+    |> Flow.map(fn {name, code_str} ->
+      HotModule.load(code_str, file_path: "#{types_path}/#{name}.ex")
+    end)
+    |> Enum.to_list()
+
 
     resolver_path = PgGen.LocalConfig.get_graphql_resolver_path()
 
@@ -207,9 +196,9 @@ defmodule PgGen.Codegen do
     end)
     |> Enum.to_list()
 
-    IO.puts("Loading graphql schema")
-    HotModule.load(graphql_schema, file_path: "#{graphql_schema_path}/types.ex")
-    Logger.info("Done reloading schema")
+    HotModule.load(graphql_schema, file_path: "#{graphql_schema_path}/schema.ex")
+    HotModule.recompile()
+    Logger.debug("Done reloading code")
 
     state
   end

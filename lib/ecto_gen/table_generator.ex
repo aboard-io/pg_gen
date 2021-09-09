@@ -11,8 +11,10 @@ defmodule EctoGen.TableGenerator do
     required_fields =
       attributes
       |> Enum.filter(&is_required/1)
-      |> Enum.map(fn 
-        {:field, name, _, _} -> ":#{name}"
+      |> Enum.map(fn
+        {:field, name, _, _} ->
+          ":#{name}"
+
         {:belongs_to, name, _, opts} ->
           ":" <> Keyword.get(opts, :fk, "#{name}_id")
       end)
@@ -23,7 +25,7 @@ defmodule EctoGen.TableGenerator do
         {:belongs_to, _, _, _} -> true
         {_, _, _, _} -> false
       end)
-      |> Enum.map(fn 
+      |> Enum.map(fn
         {_, name, _, opts} ->
           ":" <> Keyword.get(opts, :fk, "#{name}_id")
       end)
@@ -44,6 +46,19 @@ defmodule EctoGen.TableGenerator do
       |> Enum.sort()
       |> Enum.reverse()
       |> Enum.join("\n")
+
+    {_, _, primary_key_type, _} =
+      Enum.find(attributes, fn
+        {:field, "id", type, _options} -> true
+        _ -> false
+      end) || {nil, nil, nil, nil} # if a table has no primary key
+
+    primary_key_type =
+      if primary_key_type do
+        FieldGenerator.process_type_str(primary_key_type)
+      else
+        nil
+      end
 
     belongs_to_aliases =
       attributes
@@ -102,10 +117,8 @@ defmodule EctoGen.TableGenerator do
 
 
        @schema_prefix "#{schema}"
-       # TODO all our primary keys are UUIDs; would be better
-       # to make this optional
-       @primary_key {:id, Ecto.UUID, autogenerate: false}
-       @foreign_key_type :binary_id
+       #{if primary_key_type, do: "@primary_key {:id, #{primary_key_type}, autogenerate: false}"}
+       #{if primary_key_type && primary_key_type != ":integer", do: "@foreign_key_type :binary_id", else: ""}
 
 
        schema "#{name}" do
@@ -126,10 +139,7 @@ defmodule EctoGen.TableGenerator do
               #{singular_lowercase}
               |> cast(attrs, fields)
               |> validate_required(required_fields)
-              #{Enum.map(foreign_key_constraints, fn field_name ->
-                "|> foreign_key_constraint(#{field_name})"
-              end)
-              |> Enum.join("\n")}
+              #{Enum.map(foreign_key_constraints, fn field_name -> "|> foreign_key_constraint(#{field_name})" end) |> Enum.join("\n")}
               # TODO should we support unique constraints in ecto
               # or just let Postgres do it?
               # |> unique_constraint(:email)

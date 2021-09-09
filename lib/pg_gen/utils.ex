@@ -18,7 +18,8 @@ defmodule PgGen.Utils do
           arg: :*,
           resolve: :*,
           value: :*,
-          enum: :*
+          enum: :*,
+          import_types: :*,
         ]
       )
     rescue
@@ -136,13 +137,25 @@ defmodule PgGen.Utils do
 
     %{
       singular_camelized_table_name: Macro.camelize(singular),
-      plural_camelized_table_name: Macro.underscore(plural),
+      plural_camelized_table_name: Macro.camelize(plural),
       singular_underscore_table_name: Macro.underscore(singular),
       plural_underscore_table_name: Macro.underscore(plural)
     }
   end
 
   def deduplicate_joins(associations), do: associations |> dedupe_first_pass |> dedupe_second_pass
+
+  def does_module_exist(mod_str) when is_binary(mod_str) do
+    module = Module.concat(Elixir, mod_str)
+    does_module_exist(module)
+  end
+
+  def does_module_exist(module) when is_atom(module) do
+    case Code.ensure_compiled(module) do
+      {:module, ^module} -> true
+      _ -> false
+    end
+  end
 
   defp dedupe_first_pass(associations), do: deduplicate_join_associations(associations, 1)
   defp dedupe_second_pass(associations), do: deduplicate_join_associations(associations, 2)

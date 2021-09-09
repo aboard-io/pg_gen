@@ -45,8 +45,7 @@ defmodule Introspection.Model do
   end
 
   def from_introspection(result, _schema) do
-    IO.inspect(Map.keys(result))
-    IO.puts("Hmm")
+    IO.inspect(result, label: "Hmm")
   end
 
   def build_table_objects(%{

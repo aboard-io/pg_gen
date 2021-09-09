@@ -11,14 +11,15 @@ defmodule PgGen.Supervisor do
 
   @impl true
   def init(opts) do
-    IO.inspect(opts)
     schema = Keyword.get(opts, :schema, "app_public")
 
     children = [
       # Starts a worker by calling: AppWithSup.Worker.start_link(arg)
       # {AppWithSup.Worker, arg}
+      PgGen.CodeRegistry,
       PgGen.Notifications,
-      {PgGen.Codegen, %{schema: schema}}
+      {PgGen.Codegen, %{schema: schema}},
+      PgGen.FileWatcher,
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

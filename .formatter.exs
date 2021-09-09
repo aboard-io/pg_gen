@@ -11,6 +11,7 @@
     value: :*,
     resolve: :*,
     arg: :*,
-    enum: :*
+    enum: :*,
+    import_types: :*,
   ]
 ]

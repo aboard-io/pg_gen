@@ -34,13 +34,7 @@ defmodule EctoGen.FieldGenerator do
         ""
 
       false ->
-        type = @type_map[type] || type
-
-        type =
-          case Regex.match?(~r/^[A-Z\{]/, type) do
-            true -> type
-            false -> ":#{type}"
-          end
+        type = process_type_str(type)
 
         {is_array_type, options} = Keyword.pop(options, :array_type, false)
 
@@ -100,6 +94,15 @@ defmodule EctoGen.FieldGenerator do
           acc
       end
     end)
+  end
+
+  def process_type_str(type) do
+    type = @type_map[type] || type
+
+    case Regex.match?(~r/^[A-Z\{]/, type) do
+      true -> type
+      false -> ":#{type}"
+    end
   end
 
   def type_map, do: @type_map

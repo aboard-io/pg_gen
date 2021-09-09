@@ -4,9 +4,7 @@ defmodule AbsintheGen.SchemaGenerator do
   import Utils, only: [get_table_names: 1]
 
   def generate_types(%{name: name, attributes: attributes} = table, tables, _schema) do
-    IO.puts("====================#{name}===============")
-
-    dataloader_prefix = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
+    app_name = PgGen.LocalConfig.get_app_name()
 
     built_attributes =
       attributes
@@ -16,8 +14,7 @@ defmodule AbsintheGen.SchemaGenerator do
       built_attributes
       |> Utils.deduplicate_associations()
       |> Enum.map(fn {a, b, c, opts} ->
-        {a, b, c,
-         Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: dataloader_prefix})}
+        {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
       end)
       |> Enum.map(fn attr ->
         FieldGenerator.to_string(attr)
@@ -35,8 +32,7 @@ defmodule AbsintheGen.SchemaGenerator do
           |> Utils.deduplicate_associations()
           |> Utils.deduplicate_joins()
           |> Enum.map(fn {a, b, c, opts} ->
-            {a, b, c,
-             Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: dataloader_prefix})}
+            {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
           end)
           |> Enum.map(fn attr ->
             # Pass the referenced table so we know if it has indexes we can use in arguments on the field
@@ -66,7 +62,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     conditions_and_input_objects = conditions_and_filters <> "\n\n" <> order_by_enums
 
-    {name, Utils.format_code!(simple_types_template(name, fields, conditions_and_input_objects))}
+    {name, simple_types_template(name, fields, conditions_and_input_objects, app_name)}
   end
 
   def filter_accessible(tables) do
@@ -84,18 +80,38 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def is_accessible(_), do: false
 
-  def simple_types_template(name, fields, conditions_and_input_objects) do
-    """
-      object :#{name |> Inflex.singularize() |> Macro.underscore()} do
+  def simple_types_template(name, fields, conditions_and_input_objects, app_name) do
+    %{
+      singular_camelized_table_name: singular_camelized_table_name,
+      singular_underscore_table_name: singular_underscore_table_name
+    } = PgGen.Utils.get_table_names(name)
+
+    module_name_web = "#{app_name}Web"
+
+    body = """
+      object :#{singular_underscore_table_name} do
         #{fields}
       end
 
       #{conditions_and_input_objects}
     """
+
+    uses_connections = String.match?(body, ~r/Connections\./)
+    uses_dataloader = String.match?(body, ~r/dataloader\(/)
+
+    """
+    defmodule #{module_name_web}.Schema.#{singular_camelized_table_name}Types do
+      use Absinthe.Schema.Notation
+      #{if uses_dataloader, do: "import Absinthe.Resolution.Helpers, only: [dataloader: 1]", else: ""}
+      #{if uses_connections, do: "alias #{module_name_web}.Resolvers.Connections", else: ""}
+      alias #{app_name}.Repo
+
+      #{body}
+    end
+    """
   end
 
   def types_template(
-        types,
         enum_types,
         query_defs,
         dataloader,
@@ -103,28 +119,26 @@ defmodule AbsintheGen.SchemaGenerator do
         inputs,
         scalar_filters,
         connections,
-        subscriptions
+        subscriptions,
+        table_names
       ) do
     module_name = "#{PgGen.LocalConfig.get_app_name() |> Macro.camelize()}"
     module_name_web = "#{module_name}Web"
 
     """
-    defmodule #{module_name_web}.Schema.Types do
+    defmodule #{module_name_web}.Schema do
       use Absinthe.Schema
-      import Absinthe.Resolution.Helpers, only: [dataloader: 1]
 
       import_types Absinthe.Type.Custom
-      import_types(#{module_name_web}.Schema.Types.Custom.JSON)
-      import_types(#{module_name_web}.Schema.Types.Custom.UUID4)
-      import_types(#{module_name_web}.Schema.Types.Custom.UUID62)
-      import_types(#{module_name_web}.Schema.Types.Custom.Cursor)
+      import_types #{module_name_web}.Schema.Types.Custom.JSON
+      import_types #{module_name_web}.Schema.Types.Custom.UUID4
+      import_types #{module_name_web}.Schema.Types.Custom.UUID62
+      import_types #{module_name_web}.Schema.Types.Custom.Cursor
+      #{Enum.map(table_names, fn name -> "import_types #{module_name_web}.Schema.#{get_table_names(name).singular_camelized_table_name}Types" end) |> Enum.join("\n")}
 
       alias #{module_name_web}.Resolvers
       alias #{module_name_web}.Resolvers.Connections
       alias #{module_name}.Contexts
-      alias #{module_name}.Repo
-
-      #{types}
 
       #{connections}
 
@@ -305,7 +319,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_updatable(_), do: ["", ""]
 
-  def generate_deletable(%{updatable: true, name: name} = table) do
+  def generate_deletable(%{deletable: true, name: name} = table) do
     primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
 
     if is_nil(primary_key) do
@@ -458,7 +472,7 @@ defmodule AbsintheGen.SchemaGenerator do
       "#{app_name}Web.Resolvers.#{singular_camelized_table_name}"
       |> Macro.camelize()
 
-    extensions_module = Module.concat(Elixir, "#{module_name}.Extends")
+    extensions_module = Module.concat(Elixir, "#{module_name}.Extend")
 
     """
     defmodule #{module_name} do
@@ -545,11 +559,13 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_dataloader(tables) do
+    app_name = PgGen.LocalConfig.get_app_name()
+
     sources =
       Enum.map(tables, fn %{name: name} ->
         singular_camelized_table = name |> Inflex.singularize() |> Macro.camelize()
 
-        "|> Dataloader.add_source(Example.Repo.#{singular_camelized_table}, Contexts.#{singular_camelized_table}.data())"
+        "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Contexts.#{singular_camelized_table}.data())"
       end)
       |> Enum.join("\n")
 
@@ -677,6 +693,7 @@ defmodule AbsintheGen.SchemaGenerator do
       %{start_date: ["can't be blank"], end_date: ["can't be blank"]}
       \"\"\"
       def error_details(changeset) do
+        IO.inspect(changeset, label: "changeset")
         Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
           Enum.reduce(opts, msg, fn {key, value}, acc ->
             String.replace(acc, "%{\#{key}}", to_string(value))
@@ -751,12 +768,15 @@ defmodule AbsintheGen.SchemaGenerator do
         {:ok, nil}
       end
 
-      defp decode(%{value: value}) do
-        {:ok, Base62UUID.decode!(value)}
+      defp decode(%{value: ""}) do
+        :error
       end
 
-      defp decode(_) do
-        :error
+      defp decode(%{value: value}) do
+        case String.length(value) do
+          22 -> {:ok, Base62UUID.decode!(value)}
+          _ -> :error
+        end
       end
 
       defp encode(val) do
@@ -877,12 +897,9 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def does_module_exist(module) when is_atom(module) do
-    IO.puts("Does module #{module} exist?")
-
     case Code.ensure_compiled(module) do
       {:module, ^module} -> true
       _ -> false
     end
-    |> IO.inspect()
   end
 end

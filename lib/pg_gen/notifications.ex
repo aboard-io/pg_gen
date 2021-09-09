@@ -26,19 +26,17 @@ defmodule PgGen.Notifications do
 
   @impl true
   def handle_info({:notification, _pid, _ref, _channel, payload}, state) do
-    IO.inspect(payload)
-
     case Jason.decode!(payload) do
       %{"payload" => nil} -> nil
-      _ -> PgGen.Codegen.reload_code()
+      _payload -> 
+        # IO.inspect(payload, label: "Payload")
+        PgGen.Codegen.reload_code()
     end
 
     {:noreply, state}
   end
 
   def handle_info(:reconnect, {pid, channel, ref}) do
-    Logger.info("Reconnecting database listener")
-
     {:ok, ref} =
       if pid do
         Postgrex.Notifications.unlisten(pid, ref)

@@ -7,10 +7,12 @@ defmodule Mix.Tasks.Introspect do
   Usage:
   $ mix introspect db_name comma_separated_schema_list
   """
-  def run([db_name, schemas]) do
+  def run([db_name, schema]) do
     Mix.Task.run("app.start")
 
-    result = Introspection.run(db_name, String.split(schemas, ","))
+    database_config = PgGen.LocalConfig.get_db()
+
+    result = Introspection.run(database_config, String.split(schema, ","))
     File.write!("static/#{db_name}-introspection.json", Jason.encode!(result))
   end
 end

@@ -22,6 +22,10 @@ defmodule PgGen.Generator do
   def generate_ecto_contexts(tables, app_name) do
     tables
     |> Enum.map(fn table -> ContextGenerator.generate(table, app_name) end)
+    |> Enum.filter(fn
+      {_, nil} -> false
+      {_, _} -> true
+    end)
     |> Enum.into(%{})
   end
 
@@ -39,10 +43,6 @@ defmodule PgGen.Generator do
       filtered_tables
       |> Enum.map(&SchemaGenerator.generate_connection/1)
       |> Enum.join("\n\n")
-
-    def_strings =
-      type_defs
-      |> Enum.reduce("", fn {_name, def}, acc -> "#{acc}\n\n#{def}" end)
 
     enum_defs =
       enum_types
@@ -96,9 +96,15 @@ defmodule PgGen.Generator do
       filtered_tables
       |> SchemaGenerator.generate_dataloader()
 
+    table_names =
+      tables
+      |> Enum.filter(fn table ->
+        table.selectable || table.insertable || table.updatable || table.deletable
+      end)
+      |> Enum.map(fn %{name: name} -> name end)
+
     graphql_schema =
       SchemaGenerator.types_template(
-        def_strings,
         enum_defs,
         query_defs,
         dataloader_strings,
@@ -106,7 +112,8 @@ defmodule PgGen.Generator do
         input_strings,
         scalar_and_enum_filters,
         connection_defs,
-        subscription_str
+        subscription_str,
+        table_names
       )
 
     resolvers =
@@ -121,6 +128,6 @@ defmodule PgGen.Generator do
       end)
       |> Enum.into(%{})
 
-    %{resolvers: resolvers, graphql_schema: graphql_schema}
+    %{resolvers: resolvers, graphql_schema: graphql_schema, type_defs: type_defs}
   end
 end
