@@ -50,10 +50,9 @@ defmodule PgGen.LocalConfig do
   def get_authenticator_repo_atom do
     {repo, _} = Code.eval_string("#{get_app_name()}.AuthenticatorRepo")
 
-    if Code.ensure_compiled?(repo) do
-      repo
-    else
-      nil
+    case Code.ensure_compiled(repo) do
+      {:module, _} -> repo
+      {:error, _} -> nil
     end
   end
 
