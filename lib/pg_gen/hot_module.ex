@@ -24,7 +24,7 @@ defmodule PgGen.HotModule do
         #   |> Enum.reverse()
         #   |> Enum.join("\n")
 
-        module_name = opts[:module_name] || get_module_name(hd(lines))
+        module_name = opts[:module_name] || get_module_name(List.first(lines))
         if is_nil(module_name) do
           IO.puts code_str
           IO.inspect opts

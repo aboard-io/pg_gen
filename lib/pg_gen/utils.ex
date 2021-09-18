@@ -109,7 +109,7 @@ defmodule PgGen.Utils do
                    |> Inflex.pluralize(), queryable, opts}
 
                 2 ->
-                  case Tuple.to_list(tuple) |> hd do
+                  case Tuple.to_list(tuple) |> List.first() do
                     :has_many ->
                       tuple
 

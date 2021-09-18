@@ -87,7 +87,10 @@ defmodule Introspection.ModelTest do
       selectable: true,
       updatable: true,
       deletable: true,
-      indexed_attrs: [{"id", hd(attrs).type}, {"email", (Enum.reverse(attrs) |> hd).type}],
+      indexed_attrs: [
+        {"id", hd(attrs).type},
+        {"email", (Enum.reverse(attrs) |> hd()).type}
+      ],
       attributes: attrs
     }
 

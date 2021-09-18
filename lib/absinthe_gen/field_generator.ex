@@ -159,7 +159,7 @@ defmodule AbsintheGen.FieldGenerator do
   end
 
   def default_order_by(%{indexed_attrs: indexed_attrs}) do
-    {name, _} = indexed_attrs |> hd
+    {name, _} = indexed_attrs |> List.first
     "{:asc, :#{name}}"
   end
 

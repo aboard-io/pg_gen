@@ -151,7 +151,7 @@ defmodule PgGen.Builder do
     case String.match?(str, id_regex) do
       # if the association ends with _id, trim it and return
       true ->
-        String.split(str, ~r/_id$/) |> hd
+        String.split(str, ~r/_id$/) |> List.first()
 
       # if the foreign_key does not end with _id, append the table name
       # to avoid conflicts (ecto does not allow association and foreign_key

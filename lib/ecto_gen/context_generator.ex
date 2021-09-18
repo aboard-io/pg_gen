@@ -220,7 +220,7 @@ defmodule EctoGen.ContextGenerator do
                   columns: [#{keys}],
                   column_types: [#{col_types}]
                 })
-                #{unless returns_set, do: "|> hd", else: ""}
+                #{unless returns_set, do: "|> List.first()", else: ""}
                 #{if returns_set, do: "}", else: ""}
                 """
 
@@ -345,7 +345,7 @@ defmodule EctoGen.ContextGenerator do
     """
     def #{name}(#{simple_args_str}) do
       result = Repo.query!("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}])
-      Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> hd
+      Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first()
     end
     """
   end
