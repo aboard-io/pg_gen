@@ -10,6 +10,8 @@ defmodule EctoGen.FieldGenerator do
     "enum" => "Ecto.Enum"
   }
 
+  @type_list Enum.map(@type_map, fn {k, _} -> k end)
+
   @doc """
   ID fields are inferred; Ecto doesn't want them in the schema
   """
@@ -106,4 +108,5 @@ defmodule EctoGen.FieldGenerator do
   end
 
   def type_map, do: @type_map
+  def type_list, do: @type_list
 end

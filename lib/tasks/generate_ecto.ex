@@ -40,6 +40,7 @@ defmodule Mix.Tasks.PgGen.GenerateEcto do
       |> Introspection.Model.from_introspection(schema)
 
     tables
+    |> Enum.filter(fn table -> table["classKind"] != "c" end)
     |> Enum.map(fn table -> TableGenerator.generate(table, schema) end)
     |> Enum.map(fn {name, file} -> File.write!("#{file_path}/#{name}.ex", file) end)
 

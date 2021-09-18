@@ -25,7 +25,11 @@ defmodule PgGen.HotModule do
         #   |> Enum.join("\n")
 
         module_name = opts[:module_name] || get_module_name(hd(lines))
-        Logger.debug("Generating #{module_name}")
+        if is_nil(module_name) do
+          IO.puts code_str
+          IO.inspect opts
+          Logger.warn "Something wrong with the above"
+        end
 
         # contents = Code.string_to_quoted!(code_body)
         # module = Module.concat(Elixir, module_name)
@@ -65,10 +69,12 @@ defmodule PgGen.HotModule do
   end
 
   def get_module_name(str) do
-    [_, module_name] =
-      ~r/defmodule ([a-zA-Z0-9\.]+) do/
-      |> Regex.run(String.trim(str))
-
-    module_name
+      module_name_re = ~r/defmodule ([a-zA-Z0-9\.]+) do/
+      case Regex.run(module_name_re, String.trim(str)) do
+        [_, module_name] -> module_name
+        _ -> 
+          IO.puts "There was a problem with #{str}"
+          nil
+      end
   end
 end

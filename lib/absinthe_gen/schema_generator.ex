@@ -3,6 +3,18 @@ defmodule AbsintheGen.SchemaGenerator do
   alias AbsintheGen.FieldGenerator
   import Utils, only: [get_table_names: 1]
 
+  @scalar_types [
+    "text",
+    "citext",
+    "timestamptz",
+    "uuid",
+    "jsonb",
+    "bool",
+    "int4",
+    "enum",
+    "void"
+  ]
+
   def generate_types(%{name: name, attributes: attributes} = table, tables, _schema) do
     app_name = PgGen.LocalConfig.get_app_name()
 
@@ -65,7 +77,7 @@ defmodule AbsintheGen.SchemaGenerator do
     {name, simple_types_template(name, fields, conditions_and_input_objects, app_name)}
   end
 
-  def filter_accessible(tables) do
+  def filter_accessible(tables, functions) do
     Enum.filter(tables, &is_accessible/1)
   end
 
@@ -104,16 +116,17 @@ defmodule AbsintheGen.SchemaGenerator do
       use Absinthe.Schema.Notation
       #{if uses_dataloader, do: "import Absinthe.Resolution.Helpers, only: [dataloader: 1]", else: ""}
       #{if uses_connections, do: "alias #{module_name_web}.Resolvers.Connections", else: ""}
-      alias #{app_name}.Repo
+      #{if String.contains?(body, "Repo"), do: "alias #{app_name}.Repo", else: ""}
 
       #{body}
     end
     """
   end
 
-  def types_template(
+  def schema_template(
         enum_types,
         query_defs,
+        custom_record_defs,
         dataloader,
         mutations,
         inputs,
@@ -152,6 +165,8 @@ defmodule AbsintheGen.SchemaGenerator do
         field :has_next_page, non_null(:boolean)
         field :has_previous_page, non_null(:boolean)
       end
+
+      #{custom_record_defs}
 
       query do
         #{query_defs}
@@ -405,6 +420,14 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
+  def generate_custom_function_mutations(mutation_functions, tables) do
+    mutation_functions
+    |> Enum.map(&generate_custom_function_query(&1, tables))
+  end
+
+  # def generate_custom_function_mutation(function, tables) do
+  # end
+
   def generate_field(
         %{name: name, has_default: has_default, is_not_null: is_not_null, type: type},
         ignore_null_constraints \\ false
@@ -422,7 +445,7 @@ defmodule AbsintheGen.SchemaGenerator do
   def process_type(%{name: _name} = type) do
     case Builder.build_type(%{type: type}) do
       {:array, type} ->
-        "list_of(:#{FieldGenerator.type_map()[type] || type})"
+        "list_of(:#{FieldGenerator.type_map()[type] || Inflex.singularize(type)})"
 
       "enum" ->
         ":#{type.name}"
@@ -451,118 +474,13 @@ defmodule AbsintheGen.SchemaGenerator do
       |> is_nil)
   end
 
-  def generate_resolver(name, table) do
-    {name, Utils.format_code!(resolver_template(PgGen.LocalConfig.get_app_name(), name, table))}
-  end
-
-  def resolver_template(app_name, name, table) do
-    %{
-      selectable: selectable,
-      insertable: insertable,
-      updatable: updatable,
-      deletable: deletable
-    } = table
-
-    %{
-      singular_camelized_table_name: singular_camelized_table_name,
-      singular_underscore_table_name: singular_underscore_table_name
-    } = Utils.get_table_names(name)
-
-    module_name =
-      "#{app_name}Web.Resolvers.#{singular_camelized_table_name}"
-      |> Macro.camelize()
-
-    extensions_module = Module.concat(Elixir, "#{module_name}.Extend")
-
-    """
-    defmodule #{module_name} do
-      alias #{Macro.camelize(app_name)}.Contexts.#{singular_camelized_table_name}
-      #{if insertable || updatable || deletable do
-      "alias #{app_name}Web.Schema.ChangesetErrors"
-    end}
-
-      #{if selectable do
-      """
-      def #{singular_underscore_table_name}(_, %{id: id}, _) do
-        {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)}
-      end
-    
-      def #{name}(_, args, _) do
-        {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args), args: args }}
-      end
-      """
-    else
-      ""
-    end}
-
-      #{if insertable do
-      """
-      def create_#{singular_underscore_table_name}(_, %{input: input}, _) do
-        case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) do
-          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
-          {:error, changeset} ->
-            {:error,
-              message: "Could not create #{singular_camelized_table_name}",
-              details: ChangesetErrors.error_details(changeset)
-            }
-        end
-      end
-      """
-    else
-      ""
-    end}
-
-      #{if updatable do
-      """
-      def update_#{singular_underscore_table_name}(_, %{input: input}, _) do
-        #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
-        case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch) do
-          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
-          {:error, changeset} ->
-            {:error,
-              message: "Could not update #{singular_camelized_table_name}",
-              details: ChangesetErrors.error_details(changeset)
-            }
-        end
-      end
-      """
-    else
-      ""
-    end}
-      #{if deletable do
-      """
-      def delete_#{singular_underscore_table_name}(_, %{id: id}, _) do
-        #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
-        case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
-          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
-          {:error, changeset} ->
-            {:error,
-              message: "Could not update #{singular_camelized_table_name}",
-              details: ChangesetErrors.error_details(changeset)
-            }
-        end
-      end
-      """
-    else
-      ""
-    end}
-
-      #{if does_module_exist(extensions_module) do
-      """
-        #{extensions_module.extensions() |> Enum.join("\n\n")}
-      """
-    else
-      ""
-    end}
-    end
-    """
-  end
-
-  def generate_dataloader(tables) do
+  def generate_dataloader(tables, functions) do
     app_name = PgGen.LocalConfig.get_app_name()
 
     sources =
-      Enum.map(tables, fn %{name: name} ->
+      tables
+      |> filter_accessible(functions)
+      |> Enum.map(fn %{name: name} ->
         singular_camelized_table = name |> Inflex.singularize() |> Macro.camelize()
 
         "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Contexts.#{singular_camelized_table}.data())"
@@ -874,32 +792,234 @@ defmodule AbsintheGen.SchemaGenerator do
   def custom_subscriptions(module_prefix) do
     module = Module.concat(Elixir, "#{module_prefix}.Schema.Extends")
 
-    if does_module_exist(module) do
+    if Utils.does_module_exist(module) do
       module.subscriptions() |> Enum.join("\n\n")
     else
       ""
     end
   end
 
-  def inject_custom_queries(query_defs, module_prefix) do
+  def inject_custom_queries(query_defs, functions, tables, module_prefix) do
     module = Module.concat(Elixir, "#{module_prefix}.Schema.Extends")
 
-    if does_module_exist(module) do
+    query_defs = query_defs ++ db_function_queries(functions, tables)
+
+    if Utils.does_module_exist(module) do
       query_defs ++ module.query_extensions()
     else
       query_defs
     end
   end
 
-  def does_module_exist(mod_str) when is_binary(mod_str) do
-    module = Module.concat(Elixir, mod_str)
-    does_module_exist(module)
+  def db_function_queries(functions, tables) do
+    functions
+    |> Enum.map(&generate_custom_function_query(&1, tables))
   end
 
-  def does_module_exist(module) when is_atom(module) do
-    case Code.ensure_compiled(module) do
-      {:module, ^module} -> true
-      _ -> false
+  def generate_custom_function_query(
+        %{return_type: %{type: %{name: type_name}}} = function,
+        tables
+      )
+      when type_name in @scalar_types,
+      do: generate_custom_function_returning_scalar_to_string(function, tables)
+
+  def generate_custom_function_query(%{returns_set: true} = function, tables),
+    do: generate_custom_function_returning_set_to_string(function, tables)
+
+  def generate_custom_function_query(%{returns_set: false} = function, tables),
+    do: generate_custom_function_returning_record_to_string(function, tables)
+
+  def generate_custom_function_returning_set_to_string(
+        %{name: name, return_type: %{type: %{name: type_name}} = return_type, args: args},
+        tables
+      ) do
+    arg_strs = generate_custom_function_args_str(args, tables)
+
+    table = Enum.find(tables, fn %{name: name} -> name == type_name end)
+
+    connection_arg_str =
+      if is_nil(table) do
+        ""
+      else
+        FieldGenerator.generate_args_for_object(table)
+      end
+
+    resolver_module_str =
+      if Map.get(return_type, :composite_type, false) do
+        "PgFunctions"
+      else
+        Macro.camelize(type_name) |> Inflex.singularize()
+      end
+
+    """
+    field :#{name}, #{FieldGenerator.process_type(type_name, [])}_connection do
+      #{arg_strs}
+      #{connection_arg_str}
+      resolve &Resolvers.#{resolver_module_str}.#{name}/3
     end
+    """
+  end
+
+  def generate_custom_function_returning_record_to_string(
+        %{
+          name: name,
+          return_type: %{type: %{name: type_name, category: category}},
+          args: args
+        } = function,
+        tables
+      ) do
+    arg_strs = generate_custom_function_args_str(args, tables)
+    table_names = Enum.map(tables, fn %{name: name} -> name end)
+
+    if category == "E" do
+      generate_custom_function_returning_scalar_to_string(function, tables)
+    else
+      resolver_module_str = Macro.camelize(type_name) |> Inflex.singularize()
+
+      """
+      field :#{name}, #{FieldGenerator.process_type(type_name, [])} do
+        #{arg_strs}
+        resolve &Resolvers.#{resolver_module_str}.#{name}/3
+      end
+      """
+    end
+  end
+
+  def generate_custom_function_returning_scalar_to_string(
+        %{
+          name: name,
+          return_type: %{type: %{name: type_name}},
+          args: args,
+          returns_set: returns_set
+        },
+        tables
+      ) do
+    arg_strs = generate_custom_function_args_str(args, tables)
+
+    return_type =
+      if returns_set do
+        "list_of(#{FieldGenerator.process_type(type_name, [])})"
+      else
+        "#{FieldGenerator.process_type(type_name, [])}"
+      end
+
+    """
+    field :#{name}, #{return_type} do
+      #{arg_strs}
+      resolve &Resolvers.PgFunctions.#{name}/3
+    end
+    """
+  end
+
+  def generate_custom_function_args_str(args, tables) do
+    table_names = Enum.map(tables, fn %{name: name} -> name end)
+
+    Enum.map(args, fn
+      %{name: name, type: type} ->
+        normalized_name = String.replace(type.name, ~r/^[_]/, "")
+
+        if normalized_name in table_names do
+          """
+          arg :#{name}, #{process_type(Map.put(type, :name, "create_#{Inflex.singularize(normalized_name)}_input"))}
+          """
+        else
+          """
+          arg :#{name}, #{process_type(type)}
+          """
+        end
+    end)
+    |> Enum.join("")
+  end
+
+  def generate_custom_records(functions) do
+    functions
+    |> Enum.filter(fn %{return_type: return_type} ->
+      Map.get(return_type, :composite_type, false)
+    end)
+    |> Enum.map(fn %{return_type: %{name: name, attrs: attrs}} ->
+      fields =
+        attrs
+        |> Enum.map(fn attr ->
+          Map.merge(
+            attr,
+            %{
+              is_not_null: false,
+              has_default: false,
+              description: nil,
+              constraints: []
+            }
+          )
+        end)
+        |> Enum.map(&Builder.build/1)
+        |> Enum.map(fn attr ->
+          FieldGenerator.to_string(attr)
+        end)
+        |> Enum.join("\n")
+
+      """
+      object :#{name}_connection do
+        field :nodes, list_of(non_null(:#{name}))
+        field :page_info, non_null(:page_info) do
+          resolve Connections.resolve_page_info()
+        end
+        field :total_count, :integer do
+          resolve(fn %{nodes: nodes}, _, _ -> {:ok, length(nodes)} end)
+        end
+      end
+
+      object :#{name} do
+        #{fields}
+      end
+      """
+    end)
+    |> Enum.join("\n\n")
+
+    #   %{
+    #   attrs: [
+    #     %{
+    #       name: "workflow_id",
+    #       type: %{
+    #         category: "U",
+    #         description: "UUID datatype",
+    #         enum_variants: nil,
+    #         name: "uuid",
+    #         tags: %{}
+    #       },
+    #       type_id: "2950"
+    #     },
+    #     %{
+    #       name: "email",
+    #       type: %{
+    #         category: "S",
+    #         description: nil,
+    #         enum_variants: nil,
+    #         name: "citext",
+    #         tags: nil
+    #       },
+    #       type_id: "230816"
+    #     },
+    #     %{
+    #       name: "workflow_name",
+    #       type: %{
+    #         category: "S",
+    #         description: "variable-length string, no limit specified",
+    #         enum_variants: nil,
+    #         name: "text",
+    #         tags: %{}
+    #       },
+    #       type_id: "25"
+    #     }
+    #   ],
+    #   composit_type: true,
+    #   name: "get_workflow_invitation_record",
+    #   type: %{
+    #     category: "P",
+    #     description: "pseudo-type representing any composite type",
+    #     enum_variants: nil,
+    #     name: "record",
+    #     tags: %{}
+    #   },
+    #   type_id: "2249"
+    # }
   end
 end

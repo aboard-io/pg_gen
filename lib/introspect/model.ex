@@ -1,19 +1,19 @@
 defmodule Introspection.Model do
   def from_introspection(
-        %{"class" => tables, "index" => indexes} = introspection_result,
+        %{"class" => tables, "index" => indexes, "procedure" => functions, "type" => types} =
+          introspection_result,
         schema
       ) do
     references_and_tables =
       tables
       |> Enum.filter(fn table -> table["namespaceName"] == schema end)
-      |> Enum.filter(fn table -> table["classKind"] != "c" end)
       |> Enum.map(&build_table_objects/1)
       |> Enum.map(fn table -> add_attributes_for_table(table, introspection_result) end)
 
     {references, tables} =
-      Enum.reduce(references_and_tables, {[], []}, fn {references, tables},
-                                                      {ref_acc, table_acc} ->
-        {[references | ref_acc], [tables | table_acc]}
+      Enum.reduce(references_and_tables, {[], []}, fn
+        {references, tables}, {ref_acc, table_acc} ->
+          {[references | ref_acc], [tables | table_acc]}
       end)
 
     # flatten references list
@@ -41,7 +41,13 @@ defmodule Introspection.Model do
       |> Enum.map(fn table -> add_indexes_to_table(table, indexes_by_table_id[table.id]) end)
       |> Enum.map(&Map.put(&1, :table_names, PgGen.Utils.get_table_names(&1.name)))
 
-    %{tables: tables, enum_types: enum_types}
+    functions =
+      functions
+      |> Enum.map(&process_function(&1, types))
+      |> sort_functions_by_type(tables)
+      |> IO.inspect()
+
+    %{tables: tables, enum_types: enum_types, functions: functions}
   end
 
   def from_introspection(result, _schema) do
@@ -416,5 +422,116 @@ defmodule Introspection.Model do
       |> Enum.uniq()
 
     Map.put(table, :indexed_attrs, indexed_attrs)
+  end
+
+  def process_function(
+        %{
+          "aclExecutable" => executable,
+          "isStable" => is_stable,
+          "argNames" => arg_names,
+          "argTypeIds" => arg_type_ids,
+          "description" => description,
+          "inputArgsCount" => args_count,
+          "name" => name,
+          "returnTypeId" => return_type_id,
+          "returnsSet" => returns_set
+        },
+        types
+      ) do
+    
+    arg_names =
+      arg_names
+      |> Enum.map(fn
+        "_" <> name -> name
+        name -> name
+      end)
+
+
+    trimmed_arg_names =
+      arg_names
+      |> Enum.slice(0, args_count)
+
+    trimmed_arg_types =
+      arg_type_ids
+      |> Enum.slice(0, args_count)
+      |> Enum.map(&add_type_for_attribute(%{type_id: &1}, types))
+      |> Enum.with_index()
+      |> Enum.map(fn {arg, index} -> Map.put(arg, :name, Enum.at(arg_names, index)) end)
+
+    return_type =
+      if args_count < length(arg_names) do
+        return_type_names = Enum.slice(arg_names, args_count..-1)
+
+        record_attr_types =
+          arg_type_ids
+          |> Enum.slice(args_count..-1)
+          |> Enum.with_index(fn type_id, index ->
+            add_type_for_attribute(
+              %{type_id: type_id, name: Enum.at(return_type_names, index)},
+              types
+            )
+          end)
+
+        add_type_for_attribute(%{type_id: return_type_id}, types)
+        |> Map.put(:attrs, record_attr_types)
+        |> Map.put(:name, "#{name}_record")
+        |> Map.put(:composite_type, true)
+        |> put_in([:type, :name],  "#{name}_record")
+
+      else
+        add_type_for_attribute(%{type_id: return_type_id}, types)
+      end
+
+    %{
+      executable: executable,
+      is_stable: is_stable,
+      arg_names: trimmed_arg_names,
+      description: description,
+      args_count: args_count,
+      args: trimmed_arg_types,
+      return_type: return_type,
+      name: name,
+      return_type_id: return_type_id,
+      returns_set: returns_set
+    }
+  end
+
+  def sort_functions_by_type(functions, tables) do
+    table_names = Enum.map(tables, fn %{name: name} -> name end)
+
+    acc = %{
+      computed_columns_by_table: Enum.map(table_names, &{&1, []}) |> Enum.into(%{}),
+      queries: [],
+      mutations: []
+    }
+
+    functions
+    |> Enum.reduce(acc, fn
+      %{is_stable: true, name: name} = function, acc ->
+        case function_prefix_matches_table_name(name, table_names) do
+          nil ->
+            update_in(acc, [:queries], fn list -> [function | list] end)
+
+          table_name ->
+            update_in(acc, [:computed_columns_by_table, table_name], fn list ->
+              [function | list]
+            end)
+        end
+
+      %{is_stable: false} = function, acc ->
+        update_in(acc, [:mutations], fn list -> [function | list] end)
+    end)
+  end
+
+  defp function_prefix_matches_table_name(function_name, tables_by_name) do
+    match_index =
+      tables_by_name
+      |> Enum.map(&Regex.compile!("^#{&1}_"))
+      |> Enum.find_index(fn table_name_re -> String.match?(function_name, table_name_re) end)
+
+    case match_index do
+      n when is_number(n) -> Enum.at(tables_by_name, n)
+      nil -> nil
+    end
   end
 end

@@ -4,12 +4,12 @@ defmodule PgGen.Generator do
   introspectin schema.
   """
   alias EctoGen.{TableGenerator, ContextGenerator}
-  alias AbsintheGen.{SchemaGenerator, EnumGenerator}
+  alias AbsintheGen.{SchemaGenerator, EnumGenerator, ResolverGenerator}
 
-  def generate_ecto(tables, schema, app) do
+  def generate_ecto(tables, functions, schema, app) do
     %{
       repos: generate_ecto_repos(tables, schema),
-      contexts: generate_ecto_contexts(tables, app.camelized)
+      contexts: generate_ecto_contexts(tables, functions, schema, app.camelized)
     }
   end
 
@@ -19,28 +19,30 @@ defmodule PgGen.Generator do
     |> Enum.into(%{})
   end
 
-  def generate_ecto_contexts(tables, app_name) do
-    tables
-    |> Enum.map(fn table -> ContextGenerator.generate(table, app_name) end)
-    |> Enum.filter(fn
-      {_, nil} -> false
-      {_, _} -> true
-    end)
-    |> Enum.into(%{})
+  def generate_ecto_contexts(tables, functions, schema, app_name) do
+    contexts =
+      tables
+      |> Enum.map(fn table -> ContextGenerator.generate(table, functions, app_name, schema) end)
+      |> Enum.filter(fn
+        {_, nil} -> false
+        {_, _} -> true
+      end)
+      |> Enum.into(%{})
+
+    pg_functions_context =
+      ContextGenerator.generate_custom_functions_returning_scalars_and_custom_records(functions.queries ++ functions.mutations, schema, app_name)
+
+    Map.put(contexts, :pg_functions_context, pg_functions_context)
   end
 
-  def generate_absinthe(tables, enum_types, schema, app) do
-    # Filter out tables that aren't selectable/insertable/updatable/deletable
-    filtered_tables =
-      tables
-      |> SchemaGenerator.filter_accessible()
-
+  def generate_absinthe(tables, enum_types, functions, schema, app) do
+    Enum.map(tables, fn %{name: name} -> IO.inspect(name, label: "Table name") end)
     type_defs =
-      filtered_tables
-      |> Enum.map(fn table -> SchemaGenerator.generate_types(table, filtered_tables, schema) end)
+      tables
+      |> Enum.map(fn table -> SchemaGenerator.generate_types(table, tables, schema) end)
 
     connection_defs =
-      filtered_tables
+      tables
       |> Enum.map(&SchemaGenerator.generate_connection/1)
       |> Enum.join("\n\n")
 
@@ -58,15 +60,18 @@ defmodule PgGen.Generator do
     scalar_and_enum_filters = scalar_filters <> "\n\n" <> enum_filters
 
     query_defs =
-      filtered_tables
+      tables
       |> Enum.map(&SchemaGenerator.generate_queries/1)
-      |> SchemaGenerator.inject_custom_queries(app.camelized <> "Web")
+      |> SchemaGenerator.inject_custom_queries(functions.queries, tables, app.camelized <> "Web")
       |> Enum.join("\n\n")
+
+    # TODO should support mutations here, too
+    custom_record_defs = SchemaGenerator.generate_custom_records(functions.queries)
 
     subscription_str = SchemaGenerator.custom_subscriptions(app.camelized <> "Web")
 
     create_mutation_and_input_defs =
-      filtered_tables
+      tables
       |> Enum.map(&SchemaGenerator.generate_insertable/1)
 
     {create_mutations, create_inputs} =
@@ -76,7 +81,7 @@ defmodule PgGen.Generator do
       end)
 
     update_mutation_and_input_defs =
-      filtered_tables
+      tables
       |> Enum.map(&SchemaGenerator.generate_updatable/1)
 
     {update_mutations, update_inputs} =
@@ -86,27 +91,28 @@ defmodule PgGen.Generator do
       end)
 
     delete_mutations =
-      filtered_tables
+      tables
       |> Enum.map(&SchemaGenerator.generate_deletable/1)
 
-    mutation_strings = Enum.join(create_mutations ++ update_mutations ++ delete_mutations, "\n\n")
+    function_mutations = SchemaGenerator.generate_custom_function_mutations(functions.mutations, tables)
+
+
+    mutation_strings = Enum.join(create_mutations ++ update_mutations ++ delete_mutations ++ function_mutations, "\n\n")
     input_strings = Enum.join(create_inputs ++ update_inputs, "\n\n")
 
     dataloader_strings =
-      filtered_tables
-      |> SchemaGenerator.generate_dataloader()
+      tables
+      |> SchemaGenerator.generate_dataloader(functions)
 
     table_names =
       tables
-      |> Enum.filter(fn table ->
-        table.selectable || table.insertable || table.updatable || table.deletable
-      end)
       |> Enum.map(fn %{name: name} -> name end)
 
     graphql_schema =
-      SchemaGenerator.types_template(
+      SchemaGenerator.schema_template(
         enum_defs,
         query_defs,
+        custom_record_defs,
         dataloader_strings,
         mutation_strings,
         input_strings,
@@ -119,15 +125,24 @@ defmodule PgGen.Generator do
     resolvers =
       type_defs
       |> Enum.map(fn {name, _} ->
-        SchemaGenerator.generate_resolver(
+        ResolverGenerator.generate(
           name,
-          Enum.find(filtered_tables, fn %{name: t_name} ->
+          Enum.find(tables, fn %{name: t_name} ->
             t_name == name
-          end)
+          end),
+          functions.queries ++ functions.mutations
         )
       end)
       |> Enum.into(%{})
 
-    %{resolvers: resolvers, graphql_schema: graphql_schema, type_defs: type_defs}
+    pg_function_resolver =
+      ResolverGenerator.generate_custom_functions_returning_scalars_and_records_to_string(functions.queries ++ functions.mutations, app.camelized)
+
+    %{
+      resolvers: resolvers,
+      graphql_schema: graphql_schema,
+      type_defs: type_defs,
+      pg_function_resolver: pg_function_resolver
+    }
   end
 end

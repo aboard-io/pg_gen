@@ -34,12 +34,12 @@ defmodule PgGen.Codegen do
   end
 
   def build(%{authenticator_db_config: authenticator_db_config, schema: schema, app: app} = state) do
-    %{tables: tables, enum_types: enum_types} =
+    %{tables: tables, enum_types: enum_types, functions: functions} =
       Introspection.run(authenticator_db_config, String.split(schema, ","))
       |> Introspection.Model.from_introspection(schema)
 
-    ecto = Generator.generate_ecto(tables, schema, app)
-    absinthe = Generator.generate_absinthe(tables, enum_types, schema, app)
+    ecto = Generator.generate_ecto(tables, functions, schema, app)
+    absinthe = Generator.generate_absinthe(tables, enum_types, functions, schema, app)
 
     state
     |> Map.merge(%{tables: tables, ecto: ecto, absinthe: absinthe, enum_types: enum_types})
@@ -83,6 +83,7 @@ defmodule PgGen.Codegen do
 
     # wait a bit to debounce db events
     debounce_ref = Process.send_after(__MODULE__, :reload_code, 25)
+
     {:noreply,
      state
      |> Map.put(:debounce_ref, debounce_ref)}
@@ -121,7 +122,12 @@ defmodule PgGen.Codegen do
          %{
            ecto: %{repos: repos, contexts: contexts},
            app: app,
-           absinthe: %{resolvers: resolvers, graphql_schema: graphql_schema, type_defs: type_defs}
+           absinthe: %{
+             resolvers: resolvers,
+             graphql_schema: graphql_schema,
+             type_defs: type_defs,
+             pg_function_resolver: pg_function_resolver
+           }
          } = state
        ) do
     Logger.debug("Reloading code")
@@ -182,7 +188,6 @@ defmodule PgGen.Codegen do
     end)
     |> Enum.to_list()
 
-
     resolver_path = PgGen.LocalConfig.get_graphql_resolver_path()
 
     HotModule.load(AbsintheGen.SchemaGenerator.connections_resolver_template(web_module),
@@ -195,6 +200,8 @@ defmodule PgGen.Codegen do
       HotModule.load(code_str, file_path: "#{resolver_path}/#{name}.ex")
     end)
     |> Enum.to_list()
+
+    HotModule.load(pg_function_resolver, file_path: "#{resolver_path}/pg_functions.ex")
 
     HotModule.load(graphql_schema, file_path: "#{graphql_schema_path}/schema.ex")
     HotModule.recompile()

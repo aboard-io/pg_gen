@@ -9,8 +9,12 @@ defmodule AbsintheGen.FieldGenerator do
     "uuid" => "uuid62",
     "jsonb" => "json",
     "bool" => "boolean",
-    "int4" => "integer"
+    "int4" => "integer",
+    # for postgres functions that return void, we'll return a "success" string
+    "void" => "string",
   }
+
+  @type_list Enum.map(@type_map, fn {k, _} -> k end)
 
   def to_string(attr, table \\ %{})
 
@@ -66,6 +70,9 @@ defmodule AbsintheGen.FieldGenerator do
     |> with_end
   end
 
+  def process_type(type, options) when type in @type_list do 
+    process_type(@type_map[type], options)
+  end
   def process_type("enum", options) do
     ":" <> Keyword.get(options, :enum_name)
   end

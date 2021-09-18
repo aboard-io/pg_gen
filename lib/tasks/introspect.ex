@@ -10,7 +10,7 @@ defmodule Mix.Tasks.Introspect do
   def run([db_name, schema]) do
     Mix.Task.run("app.start")
 
-    database_config = PgGen.LocalConfig.get_db()
+    database_config = PgGen.LocalConfig.get_authenticator_db() || PgGen.LocalConfig.get_db()
 
     result = Introspection.run(database_config, String.split(schema, ","))
     File.write!("static/#{db_name}-introspection.json", Jason.encode!(result))
