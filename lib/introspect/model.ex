@@ -45,7 +45,6 @@ defmodule Introspection.Model do
       functions
       |> Enum.map(&process_function(&1, types))
       |> sort_functions_by_type(tables)
-      |> IO.inspect()
 
     %{tables: tables, enum_types: enum_types, functions: functions}
   end

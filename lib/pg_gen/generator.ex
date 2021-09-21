@@ -30,13 +30,16 @@ defmodule PgGen.Generator do
       |> Enum.into(%{})
 
     pg_functions_context =
-      ContextGenerator.generate_custom_functions_returning_scalars_and_custom_records(functions.queries ++ functions.mutations, schema, app_name)
+      ContextGenerator.generate_custom_functions_returning_scalars_and_custom_records(
+        functions.queries ++ functions.mutations,
+        schema,
+        app_name
+      )
 
     Map.put(contexts, :pg_functions_context, pg_functions_context)
   end
 
   def generate_absinthe(tables, enum_types, functions, schema, app) do
-    Enum.map(tables, fn %{name: name} -> IO.inspect(name, label: "Table name") end)
     type_defs =
       tables
       |> Enum.map(fn table -> SchemaGenerator.generate_types(table, tables, schema) end)
@@ -70,34 +73,40 @@ defmodule PgGen.Generator do
 
     subscription_str = SchemaGenerator.custom_subscriptions(app.camelized <> "Web")
 
-    create_mutation_and_input_defs =
+    {create_mutations, create_inputs, create_payloads} =
       tables
       |> Enum.map(&SchemaGenerator.generate_insertable/1)
-
-    {create_mutations, create_inputs} =
-      create_mutation_and_input_defs
-      |> Enum.reduce({[], []}, fn [mutation, input], {mut, inp} ->
-        {[mutation | mut], [input | inp]}
+      |> Enum.reduce({[], [], []}, fn {mutation, input, payload}, {mut, inp, pay} ->
+        {[mutation | mut], [input | inp], [payload | pay]}
       end)
 
-    update_mutation_and_input_defs =
+    {update_mutations, update_inputs, update_payloads} =
       tables
       |> Enum.map(&SchemaGenerator.generate_updatable/1)
-
-    {update_mutations, update_inputs} =
-      update_mutation_and_input_defs
-      |> Enum.reduce({[], []}, fn [mutation, input], {mut, inp} ->
-        {[mutation | mut], [input | inp]}
+      |> Enum.reduce({[], [], []}, fn {mutation, input, payload}, {mut, inp, pay} ->
+        {[mutation | mut], [input | inp], [payload | pay]}
       end)
 
-    delete_mutations =
+    {delete_mutations, _, delete_payloads} =
       tables
       |> Enum.map(&SchemaGenerator.generate_deletable/1)
+      |> Enum.reduce({[], [], []}, fn {mutation, _, payload}, {mut, _, pay} ->
+        {[mutation | mut], [], [payload | pay]}
+      end)
 
-    function_mutations = SchemaGenerator.generate_custom_function_mutations(functions.mutations, tables)
+    {function_mutations, function_mutation_payloads} =
+      SchemaGenerator.generate_custom_function_mutations(functions.mutations, tables)
 
+    mutation_strings =
+      Enum.join(
+        create_mutations ++ update_mutations ++ delete_mutations ++ function_mutations,
+        "\n\n"
+      )
 
-    mutation_strings = Enum.join(create_mutations ++ update_mutations ++ delete_mutations ++ function_mutations, "\n\n")
+    mutation_payloads =
+      create_payloads ++ update_payloads ++ delete_payloads ++ function_mutation_payloads
+      |> Enum.join("\n\n")
+
     input_strings = Enum.join(create_inputs ++ update_inputs, "\n\n")
 
     dataloader_strings =
@@ -115,6 +124,7 @@ defmodule PgGen.Generator do
         custom_record_defs,
         dataloader_strings,
         mutation_strings,
+        mutation_payloads,
         input_strings,
         scalar_and_enum_filters,
         connection_defs,
@@ -136,7 +146,10 @@ defmodule PgGen.Generator do
       |> Enum.into(%{})
 
     pg_function_resolver =
-      ResolverGenerator.generate_custom_functions_returning_scalars_and_records_to_string(functions.queries ++ functions.mutations, app.camelized)
+      ResolverGenerator.generate_custom_functions_returning_scalars_and_records_to_string(
+        functions.queries ++ functions.mutations,
+        app.camelized
+      )
 
     %{
       resolvers: resolvers,

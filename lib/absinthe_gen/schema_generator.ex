@@ -129,6 +129,7 @@ defmodule AbsintheGen.SchemaGenerator do
         custom_record_defs,
         dataloader,
         mutations,
+        mutation_payloads,
         inputs,
         scalar_filters,
         connections,
@@ -167,6 +168,8 @@ defmodule AbsintheGen.SchemaGenerator do
       end
 
       #{custom_record_defs}
+
+      #{mutation_payloads}
 
       query do
         #{query_defs}
@@ -305,13 +308,14 @@ defmodule AbsintheGen.SchemaGenerator do
 
     input_name = "create_#{singular_underscore_table_name}_input"
     input_object = generate_input_object(input_name, table.attributes)
+    payload = generate_mutation_payload(singular_underscore_table_name, "create")
 
     mutation = generate_create_mutation(table_names, input_name)
 
-    [mutation, input_object]
+    {mutation, input_object, payload}
   end
 
-  def generate_insertable(_), do: ["", ""]
+  def generate_insertable(_), do: {"", "", ""}
 
   def generate_updatable(%{updatable: true, name: name} = table) do
     primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
@@ -325,14 +329,15 @@ defmodule AbsintheGen.SchemaGenerator do
 
       input_name = "update_#{singular_underscore_table_name}"
       input_object = generate_update_input_object(input_name, table.attributes)
+      payload = generate_mutation_payload(singular_underscore_table_name, "update")
 
       mutation = generate_update_mutation(table_names, input_name)
 
-      [mutation, input_object]
+      {mutation, input_object, payload}
     end
   end
 
-  def generate_updatable(_), do: ["", ""]
+  def generate_updatable(_), do: {"", "", ""}
 
   def generate_deletable(%{deletable: true, name: name} = table) do
     primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
@@ -346,17 +351,18 @@ defmodule AbsintheGen.SchemaGenerator do
       } = get_table_names(name)
 
       type = process_type(primary_key.type)
+      payload = generate_mutation_payload(singular_underscore_table_name, "delete")
 
-      """
-      field :delete_#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
-        arg :id, non_null(#{type})
-        resolve &Resolvers.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}/3
-      end
-      """
+      {"""
+       field :delete_#{singular_underscore_table_name}, :delete_#{singular_underscore_table_name}_payload do
+         arg :id, non_null(#{type})
+         resolve &Resolvers.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}/3
+       end
+       """, nil, payload}
     end
   end
 
-  def generate_deletable(_), do: ["", ""]
+  def generate_deletable(_), do: {"", "", ""}
 
   def generate_create_mutation(
         %{
@@ -366,7 +372,7 @@ defmodule AbsintheGen.SchemaGenerator do
         input_name
       ) do
     """
-    field :create_#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
+    field :create_#{singular_underscore_table_name}, :create_#{singular_underscore_table_name}_payload do
       arg :input, non_null(:#{input_name})
       resolve &Resolvers.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}/3
     end
@@ -381,7 +387,7 @@ defmodule AbsintheGen.SchemaGenerator do
         input_name
       ) do
     """
-    field :update_#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
+    field :update_#{singular_underscore_table_name}, :update_#{singular_underscore_table_name}_payload do
       arg :input, non_null(:#{input_name}_input)
       resolve &Resolvers.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}/3
     end
@@ -421,8 +427,21 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_custom_function_mutations(mutation_functions, tables) do
-    mutation_functions
-    |> Enum.map(&generate_custom_function_query(&1, tables))
+    functions =
+      mutation_functions
+      |> Enum.map(&generate_custom_function_query(&1, tables))
+
+    payloads =
+      mutation_functions
+      |> Enum.filter(fn
+        %{return_type: %{type: %{name: name}}} when name in @scalar_types -> false
+        _ -> true
+      end)
+      |> Enum.map(fn %{return_type: %{type: %{name: name}}} -> Inflex.singularize(name) end)
+      |> Enum.uniq()
+      |> Enum.map(fn return_type_name -> generate_mutation_payload(return_type_name, "mutate") end)
+
+    {functions, payloads}
   end
 
   # def generate_custom_function_mutation(function, tables) do
@@ -864,20 +883,25 @@ defmodule AbsintheGen.SchemaGenerator do
         %{
           name: name,
           return_type: %{type: %{name: type_name, category: category}},
+          is_stable: is_stable,
           args: args
         } = function,
         tables
       ) do
     arg_strs = generate_custom_function_args_str(args, tables)
-    table_names = Enum.map(tables, fn %{name: name} -> name end)
 
     if category == "E" do
       generate_custom_function_returning_scalar_to_string(function, tables)
     else
       resolver_module_str = Macro.camelize(type_name) |> Inflex.singularize()
 
+      return_type_str =
+        if is_stable,
+          do: FieldGenerator.process_type(type_name, []),
+          else: ":mutate_#{Inflex.singularize(type_name)}_payload"
+
       """
-      field :#{name}, #{FieldGenerator.process_type(type_name, [])} do
+      field :#{name}, #{return_type_str} do
         #{arg_strs}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
       end
@@ -1021,5 +1045,14 @@ defmodule AbsintheGen.SchemaGenerator do
     #   },
     #   type_id: "2249"
     # }
+  end
+
+  def generate_mutation_payload(singular_table_name, type) do
+    """
+    object :#{type}_#{singular_table_name}_payload do
+      field :#{singular_table_name}, :#{singular_table_name}
+      field :query, :query
+    end
+    """
   end
 end

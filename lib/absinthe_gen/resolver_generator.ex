@@ -1,5 +1,5 @@
 defmodule AbsintheGen.ResolverGenerator do
-  alias PgGen.{Utils, Builder}
+  alias PgGen.{Utils}
 
   @scalar_types [
     "text",
@@ -35,12 +35,16 @@ defmodule AbsintheGen.ResolverGenerator do
       |> Macro.camelize()
 
     extensions_module = Module.concat(Elixir, "#{module_name}.Extend")
+    extensions_module_exists = Utils.does_module_exist(extensions_module)
 
     function_strings_for_table =
       functions
       |> Enum.filter(fn
         %{return_type: %{type: %{name: ^name}}} -> true
         _ -> false
+      end)
+      |> Enum.filter(fn %{name: name} ->
+        !(extensions_module_exists && name in extensions_module.overrides())
       end)
       |> Enum.map(&custom_function_to_string/1)
       |> Enum.join("\n")
@@ -53,72 +57,102 @@ defmodule AbsintheGen.ResolverGenerator do
     end}
 
       #{if selectable do
-      """
-      def #{singular_underscore_table_name}(_, %{id: id}, _) do
-        {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)}
+      select_name = "#{singular_underscore_table_name}"
+      unless extensions_module_exists && select_name in extensions_module.overrides() do
+        """
+        def #{singular_underscore_table_name}(_, %{id: id}, _) do
+          {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)}
+        end
+        """
+      else
+        ""
       end
     
-      def #{name}(_, args, _) do
-        {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args), args: args }}
+      select_all_name = "#{name}"
+      unless extensions_module_exists && select_all_name in extensions_module.overrides() do
+        """
+        def #{name}(_, args, _) do
+          {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args), args: args }}
+        end
+        """
+      else
+        ""
       end
-      """
     else
       ""
     end}
 
       #{if insertable do
-      """
-      def create_#{singular_underscore_table_name}(_, %{input: input}, _) do
-        case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) do
-          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
-          {:error, changeset} ->
-            {:error,
-              message: "Could not create #{singular_camelized_table_name}",
-              details: ChangesetErrors.error_details(changeset)
-            }
+      insert_name = "create_#{singular_underscore_table_name}"
+      unless extensions_module_exists && insert_name in extensions_module.overrides() do
+        """
+        def create_#{singular_underscore_table_name}(parent, %{input: input}, _) do
+          case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) do
+            {:ok, #{singular_underscore_table_name}} ->
+              {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
+            {:error, changeset} ->
+              {:error,
+                message: "Could not create #{singular_camelized_table_name}",
+                details: ChangesetErrors.error_details(changeset)
+              }
+          end
         end
+        """
+      else
+        ""
       end
-      """
     else
       ""
     end}
 
       #{if updatable do
-      """
-      def update_#{singular_underscore_table_name}(_, %{input: input}, _) do
-        #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
-        case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch) do
-          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
-          {:error, changeset} ->
-            {:error,
-              message: "Could not update #{singular_camelized_table_name}",
-              details: ChangesetErrors.error_details(changeset)
-            }
+      update_name = "update_#{singular_underscore_table_name}"
+      unless extensions_module_exists && update_name in extensions_module.overrides() do
+        """
+        def update_#{singular_underscore_table_name}(parent, %{input: input}, _) do
+          #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
+          case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch) do
+            {:ok, #{singular_underscore_table_name}} ->
+              {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
+            {:error, changeset} ->
+              {:error,
+                message: "Could not update #{singular_camelized_table_name}",
+                details: ChangesetErrors.error_details(changeset)
+              }
+          end
         end
+        """
+      else
+        ""
       end
-      """
     else
       ""
     end}
       #{if deletable do
-      """
-      def delete_#{singular_underscore_table_name}(_, %{id: id}, _) do
-        #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
-        case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
-          {:ok, #{singular_underscore_table_name}} -> {:ok, #{singular_underscore_table_name}}
-          {:error, changeset} ->
-            {:error,
-              message: "Could not update #{singular_camelized_table_name}",
-              details: ChangesetErrors.error_details(changeset)
-            }
+      delete_name = "delete_#{singular_underscore_table_name}"
+      unless extensions_module_exists && delete_name in extensions_module.overrides() do
+        """
+        def #{delete_name}(parent, %{id: id}, _) do
+          #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
+          case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
+            {:ok, #{singular_underscore_table_name}} -> 
+              {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
+            {:error, changeset} ->
+              {:error,
+                message: "Could not update #{singular_camelized_table_name}",
+                details: ChangesetErrors.error_details(changeset)
+              }
+          end
         end
+        """
+      else
+        ""
       end
-      """
     else
       ""
     end}
 
-      #{if Utils.does_module_exist(extensions_module) do
+      #{if extensions_module_exists do
       """
         #{extensions_module.extensions() |> Enum.join("\n\n")}
       """
@@ -160,17 +194,20 @@ defmodule AbsintheGen.ResolverGenerator do
         name: name,
         return_type: %{type: %{name: type_name}},
         arg_names: arg_names,
+        is_stable: is_stable,
         returns_set: false
       }) do
     context_module_str = type_name |> Inflex.singularize() |> Macro.camelize()
-    args_for_context = Enum.join(arg_names, ", ")
+
+    return_value =
+      get_custom_return_value(context_module_str, name, arg_names, type_name, is_stable)
 
     """
-    def #{name}(_, args, _) do
+    def #{name}(#{if is_stable, do: "_", else: ""}parent, args, _) do
       %{
         #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
       } = args
-      {:ok, #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"})}
+      {:ok, #{return_value}}
     end
     """
   end
@@ -203,5 +240,23 @@ defmodule AbsintheGen.ResolverGenerator do
       #{function_strs}
     end
     """
+  end
+
+  defp get_custom_return_value(context_module_str, name, arg_names, return_type_name, is_stable) do
+    args_for_context = Enum.join(arg_names, ", ")
+    return_type_str = Inflex.singularize(return_type_name)
+
+    if is_stable do
+      """
+        #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"})
+      """
+    else
+      """
+      %{
+        #{return_type_str}: #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"}),
+        query: parent
+      }
+      """
+    end
   end
 end
