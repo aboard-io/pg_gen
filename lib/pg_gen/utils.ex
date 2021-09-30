@@ -19,7 +19,7 @@ defmodule PgGen.Utils do
           resolve: :*,
           value: :*,
           enum: :*,
-          import_types: :*,
+          import_types: :*
         ]
       )
     rescue
@@ -84,6 +84,12 @@ defmodule PgGen.Utils do
   [{:many_to_many, "objects_by_attachments", "Object", join_through: "attachments"},
   {:many_to_many, "objects_by_object_activity_events", "Object", join_through: "object_activity_events"}]
 
+  iex> PgGen.Utils.deduplicate_join_associations([
+  ...>   {:many_to_many, "attachments", "Attachment", [join_through: "pinned_items", join_keys: [{"comment_id", "id"}, {"attachment_id", "id"}]]},
+  ...>   {:has_many, "attachments", "Attachment", [fk: "comment_id"]}
+  ...> ], 1)
+  [{:many_to_many, "attachments_by_pinned_items", "Attachment", [join_through: "pinned_items", join_keys: [{"comment_id", "id"}, {"attachment_id", "id"}]]},
+    {:has_many, "attachments", "Attachment", [fk: "comment_id"]}]
   """
   def deduplicate_join_associations(attributes, attempt) do
     associations = Enum.map(attributes, fn tuple -> get_assoc_from_tuple(tuple) end)
@@ -104,11 +110,52 @@ defmodule PgGen.Utils do
 
               case attempt do
                 1 ->
-                  {relationship,
-                   Builder.format_assoc(table_name <> "_by", join_through)
-                   |> Inflex.pluralize(), queryable, opts}
+                  case Tuple.to_list(tuple) |> List.first() do
+                    :has_many ->
+                      tuple
+
+                    # {:has_many,
+                    #  Builder.format_assoc(get_foreign_key_from_tuple(tuple), table_name)
+                    #  |> Inflex.pluralize(), queryable, opts}
+
+                    _ ->
+                      case get_foreign_key_from_tuple(tuple) do
+                        nil ->
+                          {relationship,
+                           (table_name <> "_by_" <> join_through) |> Inflex.pluralize(),
+                           queryable, opts}
+
+                        fk ->
+                          {relationship,
+                           Builder.format_assoc(fk, table_name) |> Inflex.pluralize(), queryable,
+                           opts}
+                      end
+                  end
 
                 2 ->
+                  case Tuple.to_list(tuple) |> List.first() do
+                    :has_many ->
+                      tuple
+
+                    _ ->
+                      case get_foreign_key_from_tuple(tuple) do
+                        nil ->
+                          case opts[:join_keys] do
+                            nil ->
+                              tuple
+
+                            [{prefix, _}, _] ->
+                              {relationship, assoc <> "_by_" <> prefix, queryable, opts}
+                          end
+
+                        fk ->
+                          {relationship,
+                           (Builder.format_assoc(fk, table_name) |> Inflex.pluralize()) <>
+                             "_by_" <> join_through, queryable, opts}
+                      end
+                  end
+
+                3 ->
                   case Tuple.to_list(tuple) |> List.first() do
                     :has_many ->
                       tuple
@@ -145,6 +192,10 @@ defmodule PgGen.Utils do
 
   def deduplicate_joins(associations), do: associations |> dedupe_first_pass |> dedupe_second_pass
 
+  def deduplicate_references(associations) do
+    associations |> dedupe_first_pass() |> deduplicate_associations() |> dedupe_second_pass() |> dedupe_third_pass()
+  end
+
   def does_module_exist(mod_str) when is_binary(mod_str) do
     module = Module.concat(Elixir, mod_str)
     does_module_exist(module)
@@ -157,8 +208,17 @@ defmodule PgGen.Utils do
     end
   end
 
+  def test do
+    PgGen.Utils.deduplicate_associations([
+      {:many_to_many, "attachments", "Attachment",
+       [join_through: "pinned_items", join_keys: [{"comment_id", "id"}, {"attachment_id", "id"}]]},
+      {:has_many, "attachments", "Attachment", [fk: "comment_id"]}
+    ])
+  end
+
   defp dedupe_first_pass(associations), do: deduplicate_join_associations(associations, 1)
   defp dedupe_second_pass(associations), do: deduplicate_join_associations(associations, 2)
+  defp dedupe_third_pass(associations), do: deduplicate_join_associations(associations, 3)
   defp get_foreign_key_from_tuple({_, _, _, opts}), do: opts[:fk]
   defp get_join_through_from_tuple({_, _, _, opts}), do: opts[:join_through]
 

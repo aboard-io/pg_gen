@@ -49,6 +49,9 @@ defmodule AbsintheGen.FieldGenerator do
     |> process_options(field)
     |> with_end
   end
+  def to_string({:has_one, name, type, options}, table) do
+    to_string({:belongs_to, name, type, options}, table)
+  end
 
   def to_string({:has_many, name, type, options} = field, table) do
     type_str = "non_null(#{process_type(type, options)}_connection)"

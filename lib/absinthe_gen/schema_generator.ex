@@ -15,7 +15,12 @@ defmodule AbsintheGen.SchemaGenerator do
     "void"
   ]
 
-  def generate_types(%{name: name, attributes: attributes} = table, tables, _schema) do
+  def generate_types(
+        %{name: name, attributes: attributes} = table,
+        computed_fields,
+        tables,
+        _schema
+      ) do
     app_name = PgGen.LocalConfig.get_app_name()
 
     built_attributes =
@@ -33,6 +38,15 @@ defmodule AbsintheGen.SchemaGenerator do
       end)
       |> Enum.join("\n")
 
+    computed_fields =
+      computed_fields
+      |> Enum.map(&Builder.build/1)
+      |> Enum.filter(&(!is_nil(&1)))
+      |> Enum.map(fn attr ->
+        FieldGenerator.to_string(attr)
+      end)
+      |> Enum.join("\n")
+
     references =
       case Map.get(table, :external_references) do
         nil ->
@@ -41,8 +55,7 @@ defmodule AbsintheGen.SchemaGenerator do
         references ->
           references
           |> Enum.map(&Builder.build/1)
-          |> Utils.deduplicate_associations()
-          |> Utils.deduplicate_joins()
+          |> Utils.deduplicate_references()
           |> Enum.map(fn {a, b, c, opts} ->
             {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
           end)
@@ -70,7 +83,7 @@ defmodule AbsintheGen.SchemaGenerator do
         do: generate_order_by_enum(table.name, table.indexed_attrs),
         else: ""
 
-    fields = attributes <> "\n\n" <> references
+    fields = attributes <> "\n\n" <> computed_fields <> "\n\n" <> references
 
     conditions_and_input_objects = conditions_and_filters <> "\n\n" <> order_by_enums
 
@@ -553,7 +566,16 @@ defmodule AbsintheGen.SchemaGenerator do
       ```
       \"\"\"
       def resolve(repo, field_name) do
-        fn parent, args, %{context: %{loader: loader}} ->
+        fn parent, args, %{context: %{loader: loader}} = info ->
+          {table_selections, computed_selections} =
+            #{module_name}.Resolvers.Utils.get_selections(info, repo.__schema__(:fields), repo.computed_fields())
+
+          args =
+            Map.put(args, :__selections, %{
+              table_selections: table_selections,
+              computed_selections: computed_selections
+            })
+
           loader
           |> Dataloader.load(repo, {field_name, args}, parent)
           |> on_load(fn loader_with_data ->

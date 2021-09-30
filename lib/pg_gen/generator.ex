@@ -8,14 +8,14 @@ defmodule PgGen.Generator do
 
   def generate_ecto(tables, functions, schema, app) do
     %{
-      repos: generate_ecto_repos(tables, schema),
+      repos: generate_ecto_repos(tables, functions, schema),
       contexts: generate_ecto_contexts(tables, functions, schema, app.camelized)
     }
   end
 
-  def generate_ecto_repos(tables, schema) do
+  def generate_ecto_repos(tables, functions, schema) do
     tables
-    |> Enum.map(fn table -> TableGenerator.generate(table, schema) end)
+    |> Enum.map(fn table -> TableGenerator.generate(table, functions.computed_columns_by_table[table.name], schema) end)
     |> Enum.into(%{})
   end
 
@@ -42,7 +42,7 @@ defmodule PgGen.Generator do
   def generate_absinthe(tables, enum_types, functions, schema, app) do
     type_defs =
       tables
-      |> Enum.map(fn table -> SchemaGenerator.generate_types(table, tables, schema) end)
+      |> Enum.map(fn table -> SchemaGenerator.generate_types(table, functions.computed_columns_by_table[table.name], tables, schema) end)
 
     connection_defs =
       tables

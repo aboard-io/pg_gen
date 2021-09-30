@@ -36,7 +36,13 @@ defmodule EctoGen.FieldGenerator do
         ""
 
       false ->
-        type = process_type_str(type)
+        {is_virtual, options} = Keyword.pop(options, :virtual, false)
+        type =
+          cond do 
+            type in @type_list -> process_type_str(type)
+            is_virtual -> process_type_str("any")
+            true -> process_type_str(type)
+          end
 
         {is_array_type, options} = Keyword.pop(options, :array_type, false)
 

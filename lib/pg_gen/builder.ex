@@ -3,6 +3,7 @@ defmodule PgGen.Builder do
   Takes data from Introspection and builds the attributes/fields that we will
   use to generate the Ecto and Absinthe schemas.
   """
+  require Logger
 
   def build(%{constraints: constraints} = attribute) do
     case get_reference_constraint(constraints) do
@@ -11,6 +12,33 @@ defmodule PgGen.Builder do
 
       constraint ->
         build_reference_type(constraint, attribute)
+    end
+  end
+
+  # build a computed column
+  def build(
+        %{return_type: return_type, simplified_name: simplified_name, returns_set: returns_set} =
+          attr
+      ) do
+    {relation, type} =
+      if return_type.type.name in EctoGen.FieldGenerator.type_list() do
+        {:field, build_type(return_type)}
+      else
+        relation_type =
+          if returns_set do
+            :has_many
+          else
+            :has_one
+          end
+
+        {relation_type, table_name_to_queryable(return_type.type.name)}
+      end
+
+    if relation == :field do
+      {relation, simplified_name, type, [description: attr.description, virtual: true, is_not_null: false]}
+    else
+      Logger.warn("Currently not supporting computed fields that return non-scalar values; #{simplified_name} not implemented")
+      nil
     end
   end
 

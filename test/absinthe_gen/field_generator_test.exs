@@ -5,19 +5,19 @@ defmodule AbsintheGen.FieldGeneratorTest do
 
   test "it converts field tuple to string" do
     assert FieldGenerator.to_string({:field, "id", ":uuid", []}) ==
-             "field :id, :uuid"
+             "field :id, :uuid62"
   end
 
   test "it converts field tuple to non-null string" do
     assert FieldGenerator.to_string({:field, "id", ":uuid", [is_not_null: true]}) ==
-             "field :id, non_null(:uuid)"
+             "field :id, non_null(:uuid62)"
   end
 
   test "it adds a description to a field" do
     assert FieldGenerator.to_string(
              {:field, "id", ":uuid", [is_not_null: true, description: "A unique identifier"]}
            ) ==
-             "field :id, non_null(:uuid), description: \"A unique identifier\""
+             "field :id, non_null(:uuid62), description: \"A unique identifier\""
   end
 
   test "it references another object" do

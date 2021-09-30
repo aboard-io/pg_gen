@@ -49,9 +49,12 @@ defmodule AbsintheGen.ResolverGenerator do
       |> Enum.map(&custom_function_to_string/1)
       |> Enum.join("\n")
 
+    app_atom = Macro.camelize(app_name)
+
     """
     defmodule #{module_name} do
-      alias #{Macro.camelize(app_name)}.Contexts.#{singular_camelized_table_name}
+      alias #{app_atom}.Contexts.#{singular_camelized_table_name}
+      #{if selectable, do: "alias #{Macro.camelize(app_name)}Web.Resolvers", else: ""}
       #{if insertable || updatable || deletable do
       "alias #{app_name}Web.Schema.ChangesetErrors"
     end}
@@ -60,19 +63,35 @@ defmodule AbsintheGen.ResolverGenerator do
       select_name = "#{singular_underscore_table_name}"
       unless extensions_module_exists && select_name in extensions_module.overrides() do
         """
-        def #{singular_underscore_table_name}(_, %{id: id}, _) do
-          {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)}
+        def #{singular_underscore_table_name}(_, %{id: id}, info) do
+          {table_selections, computed_selections} =
+            Resolvers.Utils.get_selections(
+              info,
+              #{app_atom}.Repo.#{singular_camelized_table_name}.__schema__(:fields),
+              #{app_atom}.Repo.#{singular_camelized_table_name}.computed_fields()
+            )
+
+          {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, table_selections, computed_selections)}
         end
         """
       else
         ""
       end
-    
+    end}
+
+      #{if selectable do
       select_all_name = "#{name}"
       unless extensions_module_exists && select_all_name in extensions_module.overrides() do
         """
-        def #{name}(_, args, _) do
-          {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args), args: args }}
+        def #{name}(_, args, info) do
+          {table_selections, computed_selections} =
+            Resolvers.Utils.get_selections(
+              info,
+              #{app_atom}.Repo.#{singular_camelized_table_name}.__schema__(:fields),
+              #{app_atom}.Repo.#{singular_camelized_table_name}.computed_fields()
+            )
+
+          {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, table_selections, computed_selections), args: args }}
         end
         """
       else

@@ -91,7 +91,8 @@ defmodule Introspection.ModelTest do
         {"id", hd(attrs).type},
         {"email", (Enum.reverse(attrs) |> hd()).type}
       ],
-      attributes: attrs
+      attributes: attrs,
+      table_names: %{plural_camelized_table_name: "Users", plural_underscore_table_name: "users", singular_camelized_table_name: "User", singular_underscore_table_name: "user"}
     }
 
     schema = "app_public"

@@ -66,8 +66,8 @@ defmodule PgGen.Codegen do
   end
 
   @impl true
-  def handle_call(:generate_ecto, _from, %{tables: tables, schema: schema, app: app} = state) do
-    ecto = Generator.generate_ecto(tables, schema, app)
+  def handle_call(:generate_ecto, _from, %{tables: tables, schema: schema, functions: functions, app: app} = state) do
+    ecto = Generator.generate_ecto(tables, functions, schema, app)
 
     {:reply, ecto, Map.put(state, :ecto, ecto)}
   end

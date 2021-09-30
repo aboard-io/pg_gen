@@ -40,7 +40,7 @@ defmodule EctoGen.ContextGenerator do
 
     computed_columns =
       functions.computed_columns_by_table[name]
-      |> Enum.map(&custom_column_to_string(&1, schema))
+      |> Enum.map(&custom_column_to_string(&1, table, schema))
 
     has_custom_functions = String.trim(function_strings_for_table) != ""
 
@@ -57,22 +57,37 @@ defmodule EctoGen.ContextGenerator do
 
        alias #{app_module_name}.Repo.#{table_name}
 
-         #{generate_selectable(table)}
+         #{generate_selectable(table, functions.computed_columns_by_table[name], schema)}
          #{generate_insertable(table)}
          #{generate_updatable(table)}
          #{generate_deletable(table)}
          #{function_strings_for_table}
          #{computed_columns}
 
+        #{if table.selectable do
+        """
         # dataloader
         def data() do
           Dataloader.Ecto.new(#{app_name}.Repo, query: &query/2)
         end
 
         def query(queryable, args) do
+          %{
+            __selections: %{
+              table_selections: table_selections,
+              computed_selections: computed_selections
+            }
+          } = args
+
           queryable
           |> Repo.Filter.apply(args)
+          |> select(^table_selections)
+          |> with_computed_columns(computed_selections)
         end
+        """
+        else
+          ""
+        end}
       end
       """
 
@@ -80,24 +95,51 @@ defmodule EctoGen.ContextGenerator do
     end
   end
 
-  def generate_selectable(%{selectable: true, name: name}) do
+  def generate_selectable(%{selectable: true, name: name}, computed_columns, schema) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
     """
-    def get_#{Inflex.singularize(lower_case_table_name)}!(id) do
-      Repo.get!(#{table_name}, id)
+    def get_#{Inflex.singularize(lower_case_table_name)}!(id, selections, computed_selections) do
+      from(#{table_name})
+      |> select(^selections)
+      |> with_computed_columns(computed_selections)
+      |> Repo.get!(id)
     end
 
-    def list_#{Inflex.pluralize(lower_case_table_name)}(args) do
+    def list_#{Inflex.pluralize(lower_case_table_name)}(args, selections, computed_selections) do
       from(#{table_name})
       |> Repo.Filter.apply(args)
+      |> select(^selections)
+      |> with_computed_columns(computed_selections)
       |> Repo.all()
     end
+
+    def with_computed_columns(query, []), do: query
+    #{if length(computed_columns) > 0, do:
+    """
+    def with_computed_columns(query, selections) do
+      #{Enum.map(computed_columns, fn %{name: name, simplified_name: simplified_name} ->
+      """
+      query =
+        if :#{simplified_name} in selections do
+          query
+          |> select_merge([t], %{
+            #{simplified_name}: fragment("select #{schema}.#{name}(?)", t)
+          })
+        else
+          query
+        end
+      """
+      end)
+      |> Enum.join("\n\n")}
+      query
+    end
+    """}
     """
   end
 
-  def generate_selectable(_), do: ""
+  def generate_selectable(_, _, _), do: ""
 
   def generate_insertable(%{selectable: true, name: name}) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
@@ -191,7 +233,6 @@ defmodule EctoGen.ContextGenerator do
             |> Enum.join(", ")
 
           is_void_type = return_type_name == "void"
-          is_enum_type = return_type.type.category == "E"
 
           return_match =
             cond do
@@ -200,44 +241,7 @@ defmodule EctoGen.ContextGenerator do
               true -> "[[result]]"
             end
 
-          result_str =
-            cond do
-              Map.get(return_type, :composite_type, false) ->
-                keys =
-                  return_type.attrs
-                  |> Enum.map(fn %{name: name} -> "\"#{name}\"" end)
-                  |> Enum.join(", ")
-
-                col_types =
-                  return_type.attrs
-                  |> Enum.map(fn %{type: %{name: name}} -> "\"#{name}\"" end)
-                  |> Enum.join(", ")
-
-                """
-                #{if returns_set, do: "%{ nodes: ", else: ""}
-                result_to_maps(%{
-                  rows: result,
-                  columns: [#{keys}],
-                  column_types: [#{col_types}]
-                })
-                #{unless returns_set, do: "|> List.first()", else: ""}
-                #{if returns_set, do: "}", else: ""}
-                """
-
-              returns_set && return_type_name == "uuid" ->
-                "Enum.map(result, fn [binary] -> Ecto.UUID.load!(binary) end)"
-
-              return_type_name == "uuid" ->
-                "Ecto.UUID.load!(result)"
-
-              is_enum_type ->
-                "String.to_existing_atom(result)"
-              is_void_type ->
-                "\"success\""
-
-              true ->
-                "result"
-            end
+          result_str = get_result_str(return_type, returns_set)
 
           """
 
@@ -353,35 +357,58 @@ defmodule EctoGen.ContextGenerator do
   def custom_column_to_string(
         %{
           name: name,
+          simplified_name: simplified_name,
           arg_names: arg_names,
-          # returns_set: false,
-          args: [%{name: type} | _]
+          return_type: return_type,
+          returns_set: returns_set
         },
+        table,
         schema
       ) do
-    # arg_strs = Enum.join(arg_names, ", ")
-    #
-    # pinned_args =
-    #   Enum.map(arg_names, fn name -> "^#{name}" end)
-    #   |> Enum.join(", ")
-    #
-    # repo_name = type |> Inflex.singularize() |> Macro.camelize()
-    #
-    # question_marks =
-    #   arg_names
-    #   |> Enum.map(fn _ -> "?" end)
-    #   |> Enum.join(", ")
+    arg_strs = Enum.join(arg_names, ", ")
 
-    Logger.warn("Computed custom columns do not currently work")
-    ""
+    IO.puts(table.name)
+    IO.puts(name)
 
-    # """
-    # def #{name}(#{arg_strs}) do
-    #   from(t in Repo.#{repo_name},
-    #   join: s in fragment("select * from #{schema}.#{name}(#{question_marks})", #{pinned_args}),
-    #   on: s.id == t.id)
-    # end
-    # """
+    cast_values =
+      table.attributes
+      |> Enum.map(fn attr -> Map.put(attr, :name, "#{List.first(arg_names)}.#{attr.name}") end)
+      |> generate_args_str()
+
+      # |> Enum.map(fn %{name: name, type: type} ->
+      # end)
+      |> IO.inspect(label: "Cast values")
+
+    pg_args =
+      1..length(table.attributes)
+      |> Enum.map(&"$#{&1}")
+      |> Enum.join(", ")
+
+    result_str = get_result_str(return_type, returns_set)
+
+    return_match =
+      cond do
+        returns_set -> "result"
+        true -> "[[result]]"
+      end
+
+    """
+    def #{simplified_name}(#{arg_strs}) do
+        {:ok, %Postgrex.Result{ rows: #{return_match}}} =
+          Repo.query(
+        \"\"\"
+        select #{schema}.#{name}(
+        (select 
+            cast((#{pg_args}) as #{schema}.#{table.name})
+        ))
+        \"\"\",
+        [
+          #{cast_values}
+        ]
+      )
+      #{result_str}
+    end
+    """
   end
 
   defp generate_args_str(arg_types) do
@@ -392,5 +419,49 @@ defmodule EctoGen.ContextGenerator do
       %{name: name} -> name
     end)
     |> Enum.join(", ")
+  end
+
+  defp get_result_str(return_type, returns_set) do
+    is_void_type = return_type.type.name == "void"
+    is_enum_type = return_type.type.category == "E"
+
+    cond do
+      Map.get(return_type, :composite_type, false) ->
+        keys =
+          return_type.attrs
+          |> Enum.map(fn %{name: name} -> "\"#{name}\"" end)
+          |> Enum.join(", ")
+
+        col_types =
+          return_type.attrs
+          |> Enum.map(fn %{type: %{name: name}} -> "\"#{name}\"" end)
+          |> Enum.join(", ")
+
+        """
+        #{if returns_set, do: "%{ nodes: ", else: ""}
+        result_to_maps(%{
+          rows: result,
+          columns: [#{keys}],
+          column_types: [#{col_types}]
+        })
+        #{unless returns_set, do: "|> List.first()", else: ""}
+        #{if returns_set, do: "}", else: ""}
+        """
+
+      returns_set && return_type.type.name == "uuid" ->
+        "Enum.map(result, fn [binary] -> Ecto.UUID.load!(binary) end)"
+
+      return_type.type.name == "uuid" ->
+        "Ecto.UUID.load!(result)"
+
+      is_enum_type ->
+        "String.to_existing_atom(result)"
+
+      is_void_type ->
+        "\"success\""
+
+      true ->
+        "result"
+    end
   end
 end

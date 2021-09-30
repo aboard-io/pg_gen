@@ -2,23 +2,7 @@ defmodule PgGen.Extend do
   defmacro extend(do: contents) do
     {:__block__, [], contents} = contents
 
-    overrides_stringified =
-      contents
-      |> Enum.with_index(fn
-        # @override :atom
-        {_, _, [{:override, _, [fn_atom]}]}, _ ->
-          to_string(fn_atom)
-
-        # @override preceding a function call
-        {_, _, [{:override, _, _}]}, index ->
-          {:def, _, [{fn_atom, _, _} | _]} = Enum.at(contents, index + 1)
-          to_string(fn_atom)
-
-        _, _ ->
-          ""
-      end)
-      |> Enum.filter(&(&1 != ""))
-      |> Enum.uniq()
+    overrides_stringified = stringify_overrides(contents)
 
     stringified =
       contents
@@ -45,5 +29,26 @@ defmodule PgGen.Extend do
         @overrides
       end
     end
+  end
+
+  def stringify_overrides(contents) do
+      contents
+      |> Enum.with_index(fn
+        # @override :atom
+        {_, _, [{:override, _, [fn_atom]}]}, _ ->
+          to_string(fn_atom)
+
+        # @override preceding a function call
+        {_, _, [{:override, _, _}]}, index ->
+          case Enum.at(contents, index + 1) do
+            {:def, _, [{fn_atom, _, _} | _]} -> to_string(fn_atom)
+            {:field, _, [fn_atom | _ ]} -> to_string(fn_atom)
+          end
+
+        _, _ ->
+          ""
+      end)
+      |> Enum.filter(&(&1 != ""))
+      |> Enum.uniq()
   end
 end

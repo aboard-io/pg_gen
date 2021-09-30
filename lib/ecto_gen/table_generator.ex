@@ -2,7 +2,7 @@ defmodule EctoGen.TableGenerator do
   alias PgGen.{Utils, Builder}
   alias EctoGen.FieldGenerator
 
-  def generate(%{name: name, attributes: attributes} = table, schema) do
+  def generate(%{name: name, attributes: attributes} = table, computed_fields, schema) do
     attributes =
       attributes
       |> Enum.map(&Builder.build/1)
@@ -47,11 +47,24 @@ defmodule EctoGen.TableGenerator do
       |> Enum.reverse()
       |> Enum.join("\n")
 
+    computed_fields_string =
+      computed_fields
+      |> Enum.map(&Builder.build/1)
+      |> Enum.filter(&(!is_nil(&1)))
+      |> Enum.map(&(FieldGenerator.to_string(&1) <> ", virtual: true"))
+      |> Enum.join("\n")
+
+    computed_fields_fun_str =
+      computed_fields
+      |> Enum.map(&":#{&1.simplified_name}")
+      |> Enum.join(", ")
+
+    # if a table has no primary key
     {_, _, primary_key_type, _} =
       Enum.find(attributes, fn
-        {:field, "id", type, _options} -> true
+        {:field, "id", _type, _options} -> true
         _ -> false
-      end) || {nil, nil, nil, nil} # if a table has no primary key
+      end) || {nil, nil, nil, nil}
 
     primary_key_type =
       if primary_key_type do
@@ -74,8 +87,7 @@ defmodule EctoGen.TableGenerator do
           built_references =
             references
             |> Enum.map(&Builder.build/1)
-            |> Utils.deduplicate_associations()
-            |> Utils.deduplicate_joins()
+            |> Utils.deduplicate_references()
 
           aliases =
             built_references
@@ -124,6 +136,13 @@ defmodule EctoGen.TableGenerator do
        schema "#{name}" do
          #{attribute_string}
 
+         #{if String.trim(computed_fields_string) != "" do
+       """
+       # Computed fields
+       #{computed_fields_string}
+       """
+     end}
+
          #{if String.trim(references) != "" do
        """
        # Relations
@@ -135,7 +154,7 @@ defmodule EctoGen.TableGenerator do
             def changeset(#{singular_lowercase}, attrs) do
               fields = [#{Enum.join(all_fields, ", ")}]
               required_fields = [#{Enum.join(required_fields, ", ")}]
-              
+
               #{singular_lowercase}
               |> cast(attrs, fields)
               |> validate_required(required_fields)
@@ -145,6 +164,10 @@ defmodule EctoGen.TableGenerator do
               # |> unique_constraint(:email)
             end
 
+          # Computed fields
+          def computed_fields do
+            [#{computed_fields_fun_str}]
+          end
        end
      end
      """)}

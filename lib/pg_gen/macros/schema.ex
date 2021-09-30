@@ -1,6 +1,12 @@
 defmodule PgGen.Schema do
   def generate_strings(name, contents) do
-    contents = get_quoted_contents(contents)
+    contents = 
+      contents
+      |> get_quoted_contents()
+      |> Enum.filter(fn
+        {:@, _, [{:override, _, _}]} -> false
+        {_, _, _} -> true
+      end)
 
     quote do
       def unquote(:"#{name}")() do
@@ -15,6 +21,10 @@ defmodule PgGen.Schema do
 
   defmacro query(do: contents) do
     generate_strings(:query_extensions, contents)
+  end
+
+  defmacro mutation(do: contents) do
+    generate_strings(:subscriptions, contents)
   end
 
   defmacro field(name, type, do: do_block) do

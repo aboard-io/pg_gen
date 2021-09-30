@@ -437,14 +437,12 @@ defmodule Introspection.Model do
         },
         types
       ) do
-    
     arg_names =
       arg_names
       |> Enum.map(fn
         "_" <> name -> name
         name -> name
       end)
-
 
     trimmed_arg_names =
       arg_names
@@ -475,8 +473,7 @@ defmodule Introspection.Model do
         |> Map.put(:attrs, record_attr_types)
         |> Map.put(:name, "#{name}_record")
         |> Map.put(:composite_type, true)
-        |> put_in([:type, :name],  "#{name}_record")
-
+        |> put_in([:type, :name], "#{name}_record")
       else
         add_type_for_attribute(%{type_id: return_type_id}, types)
       end
@@ -497,7 +494,6 @@ defmodule Introspection.Model do
 
   def sort_functions_by_type(functions, tables) do
     table_names = Enum.map(tables, fn %{name: name} -> name end)
-
     acc = %{
       computed_columns_by_table: Enum.map(table_names, &{&1, []}) |> Enum.into(%{}),
       queries: [],
@@ -506,20 +502,40 @@ defmodule Introspection.Model do
 
     functions
     |> Enum.reduce(acc, fn
-      %{is_stable: true, name: name} = function, acc ->
-        case function_prefix_matches_table_name(name, table_names) do
+      %{is_stable: true} = function, acc ->
+        case belongs_to_table(function, table_names) do
           nil ->
             update_in(acc, [:queries], fn list -> [function | list] end)
 
           table_name ->
+            func_name_re = Regex.compile!("^#{table_name}_")
+            simplified_name = String.replace(function.name, func_name_re, "")
+            if function.name === "workflows_active_object_tasks" do
+              IO.inspect(simplified_name, label: "Okay so this seems fine?")
+              IO.inspect(table_name)
+            end
+
             update_in(acc, [:computed_columns_by_table, table_name], fn list ->
-              [function | list]
+              [Map.put(function, :simplified_name, simplified_name) | list]
             end)
         end
 
       %{is_stable: false} = function, acc ->
         update_in(acc, [:mutations], fn list -> [function | list] end)
     end)
+  end
+
+  defp belongs_to_table(function, table_names) do
+    table_name = function_prefix_matches_table_name(function.name, table_names)
+    first_arg_is_record(function, table_name)
+  end
+
+  defp first_arg_is_record(_, nil), do: nil
+  defp first_arg_is_record(%{args: []}, _table_name), do: nil
+
+  defp first_arg_is_record(%{args: [first_arg | _]}, table_name) do
+    IO.inspect(first_arg.type.name, label: "FIRST ARG TYPE")
+    if first_arg.type.name === table_name, do: table_name
   end
 
   defp function_prefix_matches_table_name(function_name, tables_by_name) do

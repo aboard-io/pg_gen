@@ -69,13 +69,14 @@ defmodule PgGen.BuilderTest do
         category: "U",
         description: "UUID datatype",
         name: "uuid",
-        tags: %{}
+        tags: %{},
+        enum_variants: nil
       },
       type_id: "2950"
     }
 
     assert Builder.build(foriegn_field) ==
-             {:belongs_to, "workflow", "Workflow", []}
+             {:belongs_to, "workflow", "Workflow", [is_not_null: true, has_default: false]}
   end
 
   test "it generates a belongs_to relationship with an unexpected foreign_key" do
@@ -99,13 +100,15 @@ defmodule PgGen.BuilderTest do
         category: "U",
         description: "UUID datatype",
         name: "uuid",
+        enum_variants: nil,
         tags: %{}
       },
       type_id: "2950"
     }
 
     assert Builder.build(foriegn_field) ==
-             {:belongs_to, "my_workflow", "Workflow", [fk: "my_workflow_id"]}
+             {:belongs_to, "my_workflow", "Workflow",
+              [fk: "my_workflow_id", is_not_null: true, has_default: false]}
   end
 
   test "it generates a belongs_to relationship with an unexpected referenced id" do
@@ -129,13 +132,15 @@ defmodule PgGen.BuilderTest do
         category: "U",
         description: "UUID datatype",
         name: "uuid",
+        enum_variants: nil,
         tags: %{}
       },
       type_id: "2950"
     }
 
     assert Builder.build(foriegn_field) ==
-             {:belongs_to, "workflow", "Workflow", [ref: "uuid"]}
+             {:belongs_to, "workflow", "Workflow",
+              [ref: "uuid", is_not_null: true, has_default: false]}
   end
 
   test "it generates a has_many relationship" do
@@ -162,6 +167,7 @@ defmodule PgGen.BuilderTest do
             category: "U",
             description: "UUID datatype",
             name: "uuid",
+            enum_variants: nil,
             tags: %{}
           },
           type_id: "2950"
