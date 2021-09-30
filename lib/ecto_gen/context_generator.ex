@@ -100,20 +100,23 @@ defmodule EctoGen.ContextGenerator do
       get_table_names(name)
 
     """
-    def get_#{Inflex.singularize(lower_case_table_name)}!(id, selections, computed_selections) do
+    def get_#{Inflex.singularize(lower_case_table_name)}!(id, selections \\\\ [], computed_selections \\\\ []) do
       from(#{table_name})
-      |> select(^selections)
+      |> maybe_select(selections)
       |> with_computed_columns(computed_selections)
       |> Repo.get!(id)
     end
 
-    def list_#{Inflex.pluralize(lower_case_table_name)}(args, selections, computed_selections) do
+    def list_#{Inflex.pluralize(lower_case_table_name)}(args, selections \\\\ [], computed_selections \\\\ []) do
       from(#{table_name})
       |> Repo.Filter.apply(args)
-      |> select(^selections)
+      |> maybe_select(selections)
       |> with_computed_columns(computed_selections)
       |> Repo.all()
     end
+
+    def maybe_select(query, []), do: query
+    def maybe_select(query, selections), do: select(query, ^selections)
 
     def with_computed_columns(query, []), do: query
     #{if length(computed_columns) > 0, do:
