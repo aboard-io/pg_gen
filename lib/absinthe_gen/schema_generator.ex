@@ -179,7 +179,6 @@ defmodule AbsintheGen.SchemaGenerator do
         dataloader,
         mutations,
         mutation_payloads,
-        inputs,
         scalar_filters,
         connections,
         subscriptions,
@@ -232,8 +231,6 @@ defmodule AbsintheGen.SchemaGenerator do
 
       #{custom_record_defs}
 
-      #{mutation_payloads}
-
       query do
         #{query_defs}
       end
@@ -242,6 +239,9 @@ defmodule AbsintheGen.SchemaGenerator do
         #{mutations}
       end
 
+      # Payloads for custom Postgres mutation functions
+      #{mutation_payloads}
+
       #{if subscriptions != "" do
       """
       subscription do
@@ -249,8 +249,6 @@ defmodule AbsintheGen.SchemaGenerator do
       end
       """
     end}
-
-      #{inputs}
 
       #{dataloader}
 
@@ -370,12 +368,10 @@ defmodule AbsintheGen.SchemaGenerator do
     } = table_names = get_table_names(name)
 
     input_name = "create_#{singular_underscore_table_name}_input"
-    mutation = generate_create_mutation(table_names, input_name)
-
-    {mutation, "", ""}
+    generate_create_mutation(table_names, input_name)
   end
 
-  def generate_insertable(_), do: {"", "", ""}
+  def generate_insertable(_), do: ""
 
   def generate_updatable(%{updatable: true, name: name} = table) do
     primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
@@ -388,13 +384,11 @@ defmodule AbsintheGen.SchemaGenerator do
       } = table_names = get_table_names(name)
 
       input_name = "update_#{singular_underscore_table_name}"
-      mutation = generate_update_mutation(table_names, input_name)
-
-      {mutation, "", ""}
+      generate_update_mutation(table_names, input_name)
     end
   end
 
-  def generate_updatable(_), do: {"", "", ""}
+  def generate_updatable(_), do: ""
 
   def generate_deletable(%{deletable: true, name: name} = table) do
     primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
@@ -409,16 +403,16 @@ defmodule AbsintheGen.SchemaGenerator do
 
       type = process_type(primary_key.type)
 
-      {"""
-       field :delete_#{singular_underscore_table_name}, :delete_#{singular_underscore_table_name}_payload do
-         arg :id, non_null(#{type})
-         resolve &Resolvers.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}/3
-       end
-       """, nil, nil}
+      """
+      field :delete_#{singular_underscore_table_name}, :delete_#{singular_underscore_table_name}_payload do
+        arg :id, non_null(#{type})
+        resolve &Resolvers.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}/3
+      end
+      """
     end
   end
 
-  def generate_deletable(_), do: {"", "", ""}
+  def generate_deletable(_), do: ""
 
   def generate_create_mutation(
         %{
@@ -454,6 +448,7 @@ defmodule AbsintheGen.SchemaGenerator do
     {create_input_object, create_payload} = generate_insertable_input_and_payload(table)
     {update_input_object, update_payload} = generate_updatable_input_and_payload(table)
     delete_payload = generate_deletable_payload(table)
+
     [create_input_object, create_payload, update_input_object, update_payload, delete_payload]
     |> Enum.join("\n\n")
   end
@@ -469,6 +464,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     {input_object, payload}
   end
+
   def generate_insertable_input_and_payload(_), do: {"", ""}
 
   def generate_updatable_input_and_payload(%{updatable: true, name: name} = table) do

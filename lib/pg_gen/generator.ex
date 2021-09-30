@@ -73,26 +73,17 @@ defmodule PgGen.Generator do
 
     subscription_str = SchemaGenerator.custom_subscriptions(app.camelized <> "Web")
 
-    {create_mutations, create_inputs, create_payloads} =
+    create_mutations =
       tables
       |> Enum.map(&SchemaGenerator.generate_insertable/1)
-      |> Enum.reduce({[], [], []}, fn {mutation, input, payload}, {mut, inp, pay} ->
-        {[mutation | mut], [input | inp], [payload | pay]}
-      end)
 
-    {update_mutations, update_inputs, update_payloads} =
+    update_mutations =
       tables
       |> Enum.map(&SchemaGenerator.generate_updatable/1)
-      |> Enum.reduce({[], [], []}, fn {mutation, input, payload}, {mut, inp, pay} ->
-        {[mutation | mut], [input | inp], [payload | pay]}
-      end)
 
-    {delete_mutations, _, delete_payloads} =
+    delete_mutations =
       tables
       |> Enum.map(&SchemaGenerator.generate_deletable/1)
-      |> Enum.reduce({[], [], []}, fn {mutation, _, payload}, {mut, _, pay} ->
-        {[mutation | mut], [], [payload | pay]}
-      end)
 
     {function_mutations, function_mutation_payloads} =
       SchemaGenerator.generate_custom_function_mutations(functions.mutations, tables)
@@ -104,10 +95,8 @@ defmodule PgGen.Generator do
       )
 
     mutation_payloads =
-      create_payloads ++ update_payloads ++ delete_payloads ++ function_mutation_payloads
+      function_mutation_payloads
       |> Enum.join("\n\n")
-
-    input_strings = Enum.join(create_inputs ++ update_inputs, "\n\n")
 
     dataloader_strings =
       tables
@@ -125,7 +114,6 @@ defmodule PgGen.Generator do
         dataloader_strings,
         mutation_strings,
         mutation_payloads,
-        input_strings,
         scalar_and_enum_filters,
         connection_defs,
         subscription_str,
