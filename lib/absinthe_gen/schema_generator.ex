@@ -27,15 +27,35 @@ defmodule AbsintheGen.SchemaGenerator do
       attributes
       |> Enum.map(&Builder.build/1)
 
+    %{
+      singular_camelized_table_name: singular_camelized_table_name
+    } = Utils.get_table_names(name)
+
+    module_name =
+      "#{app_name}Web.Schema.#{singular_camelized_table_name}Types"
+      |> Macro.camelize()
+
+    extensions_module = Module.concat(Elixir, "#{module_name}.Extend")
+    extensions_module_exists = Utils.does_module_exist(extensions_module)
+
     attributes =
       built_attributes
       |> Utils.deduplicate_associations()
       |> Enum.map(fn {a, b, c, opts} ->
         {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
       end)
-      |> Enum.map(fn attr ->
-        FieldGenerator.to_string(attr)
+      |> Enum.map(fn {_, name, _, _} = attr ->
+        unless extensions_module_exists && name in extensions_module.overrides do
+          FieldGenerator.to_string(attr)
+        end
       end)
+
+    attributes =
+      (attributes ++
+         if(extensions_module_exists,
+           do: extensions_module.extensions(),
+           else: []
+         ))
       |> Enum.join("\n")
 
     computed_fields =
@@ -87,10 +107,19 @@ defmodule AbsintheGen.SchemaGenerator do
 
     conditions_and_input_objects = conditions_and_filters <> "\n\n" <> order_by_enums
 
-    {name, simple_types_template(name, fields, conditions_and_input_objects, app_name)}
+    mutation_input_objects_and_payloads = generate_mutation_inputs_and_payloads(table)
+
+    {name,
+     simple_types_template(
+       name,
+       fields,
+       conditions_and_input_objects,
+       mutation_input_objects_and_payloads,
+       app_name
+     )}
   end
 
-  def filter_accessible(tables, functions) do
+  def filter_accessible(tables, _functions) do
     Enum.filter(tables, &is_accessible/1)
   end
 
@@ -105,7 +134,13 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def is_accessible(_), do: false
 
-  def simple_types_template(name, fields, conditions_and_input_objects, app_name) do
+  def simple_types_template(
+        name,
+        fields,
+        conditions_and_input_objects,
+        mutation_input_objects_and_payloads,
+        app_name
+      ) do
     %{
       singular_camelized_table_name: singular_camelized_table_name,
       singular_underscore_table_name: singular_underscore_table_name
@@ -132,6 +167,7 @@ defmodule AbsintheGen.SchemaGenerator do
       #{if String.contains?(body, "Repo"), do: "alias #{app_name}.Repo", else: ""}
 
       #{body}
+      #{mutation_input_objects_and_payloads}
     end
     """
   end
@@ -152,6 +188,16 @@ defmodule AbsintheGen.SchemaGenerator do
     module_name = "#{PgGen.LocalConfig.get_app_name() |> Macro.camelize()}"
     module_name_web = "#{module_name}Web"
 
+    extensions_module = Module.concat(Elixir, "#{module_name_web}.Schema.Extends")
+    extensions_module_exists = Utils.does_module_exist(extensions_module)
+
+    if !extensions_module_exists do
+      require IEx
+      IEx.pry()
+    else
+      IO.inspect(extensions_module.imports)
+    end
+
     """
     defmodule #{module_name_web}.Schema do
       use Absinthe.Schema
@@ -162,6 +208,10 @@ defmodule AbsintheGen.SchemaGenerator do
       import_types #{module_name_web}.Schema.Types.Custom.UUID62
       import_types #{module_name_web}.Schema.Types.Custom.Cursor
       #{Enum.map(table_names, fn name -> "import_types #{module_name_web}.Schema.#{get_table_names(name).singular_camelized_table_name}Types" end) |> Enum.join("\n")}
+        #{if extensions_module_exists && Kernel.function_exported?(extensions_module, :imports, 0) do
+      [imports] = extensions_module.imports()
+      Enum.map(imports, fn name -> "import_types #{name}" end) |> Enum.join("\n")
+    end}
 
       alias #{module_name_web}.Resolvers
       alias #{module_name_web}.Resolvers.Connections
@@ -320,12 +370,9 @@ defmodule AbsintheGen.SchemaGenerator do
     } = table_names = get_table_names(name)
 
     input_name = "create_#{singular_underscore_table_name}_input"
-    input_object = generate_input_object(input_name, table.attributes)
-    payload = generate_mutation_payload(singular_underscore_table_name, "create")
-
     mutation = generate_create_mutation(table_names, input_name)
 
-    {mutation, input_object, payload}
+    {mutation, "", ""}
   end
 
   def generate_insertable(_), do: {"", "", ""}
@@ -341,12 +388,9 @@ defmodule AbsintheGen.SchemaGenerator do
       } = table_names = get_table_names(name)
 
       input_name = "update_#{singular_underscore_table_name}"
-      input_object = generate_update_input_object(input_name, table.attributes)
-      payload = generate_mutation_payload(singular_underscore_table_name, "update")
-
       mutation = generate_update_mutation(table_names, input_name)
 
-      {mutation, input_object, payload}
+      {mutation, "", ""}
     end
   end
 
@@ -364,14 +408,13 @@ defmodule AbsintheGen.SchemaGenerator do
       } = get_table_names(name)
 
       type = process_type(primary_key.type)
-      payload = generate_mutation_payload(singular_underscore_table_name, "delete")
 
       {"""
        field :delete_#{singular_underscore_table_name}, :delete_#{singular_underscore_table_name}_payload do
          arg :id, non_null(#{type})
          resolve &Resolvers.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}/3
        end
-       """, nil, payload}
+       """, nil, nil}
     end
   end
 
@@ -407,7 +450,52 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_input_object(input_object_name, attributes) do
+  def generate_mutation_inputs_and_payloads(table) do
+    {create_input_object, create_payload} = generate_insertable_input_and_payload(table)
+    {update_input_object, update_payload} = generate_updatable_input_and_payload(table)
+    delete_payload = generate_deletable_payload(table)
+    [create_input_object, create_payload, update_input_object, update_payload, delete_payload]
+    |> Enum.join("\n\n")
+  end
+
+  def generate_insertable_input_and_payload(%{insertable: true, name: name} = table) do
+    %{
+      singular_underscore_table_name: singular_underscore_table_name
+    } = get_table_names(name)
+
+    input_name = "create_#{singular_underscore_table_name}_input"
+    input_object = generate_create_input_object(input_name, table.attributes)
+    payload = generate_mutation_payload(singular_underscore_table_name, "create")
+
+    {input_object, payload}
+  end
+  def generate_insertable_input_and_payload(_), do: {"", ""}
+
+  def generate_updatable_input_and_payload(%{updatable: true, name: name} = table) do
+    %{
+      singular_underscore_table_name: singular_underscore_table_name
+    } = get_table_names(name)
+
+    input_name = "update_#{singular_underscore_table_name}"
+    input_object = generate_update_input_object(input_name, table.attributes)
+    payload = generate_mutation_payload(singular_underscore_table_name, "update")
+
+    {input_object, payload}
+  end
+
+  def generate_updatable_input_and_payload(_), do: {"", ""}
+
+  def generate_deletable_payload(%{deletable: true, name: name}) do
+    %{
+      singular_underscore_table_name: singular_underscore_table_name
+    } = get_table_names(name)
+
+    generate_mutation_payload(singular_underscore_table_name, "delete")
+  end
+
+  def generate_deletable_payload(_), do: ""
+
+  def generate_create_input_object(input_object_name, attributes) do
     fields =
       attributes
       |> Enum.map(&generate_field/1)

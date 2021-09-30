@@ -13,8 +13,8 @@ defmodule PgGen.Extend do
       |> Enum.map(&Macro.to_string/1)
       # TODO this is pretty brittle, should prob change at some point. It's
       # cosmetic b/c Macro.to_string/1 will return defs like `def(foo(bar)) do`
-      |> Enum.map(&String.replace(&1, "def(", "def "))
-      |> Enum.map(&String.replace(&1, ")) do", ") do"))
+      # |> Enum.map(&String.replace(&1, "def(", "def "))
+      # |> Enum.map(&String.replace(&1, ")) do", ") do"))
 
     quote do
       Module.register_attribute(__MODULE__, :override, accumulate: true)

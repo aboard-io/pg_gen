@@ -5,7 +5,7 @@ defmodule PgGen.Schema do
       |> get_quoted_contents()
       |> Enum.filter(fn
         {:@, _, [{:override, _, _}]} -> false
-        {_, _, _} -> true
+        _ -> true
       end)
 
     quote do
@@ -57,6 +57,10 @@ defmodule PgGen.Schema do
         resolve #{unquote(stringified)}
       """
     end
+  end
+
+  defmacro import_types(contents) do
+    generate_strings(:imports, contents)
   end
 
   def get_quoted_contents(contents) do
