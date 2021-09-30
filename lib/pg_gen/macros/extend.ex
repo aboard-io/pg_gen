@@ -31,6 +31,44 @@ defmodule PgGen.Extend do
     end
   end
 
+  defmacro object(name, do: contents) do
+    {:__block__, [], contents} = contents
+    generate_code(name, contents)
+  end
+
+  defmacro input_object(name, do: contents) do
+    {:__block__, [], contents} = contents
+    generate_code(name, contents)
+  end
+
+  defmacro enum(name, do: contents) do
+    {:__block__, [], contents} = contents
+    generate_code(name, contents)
+  end
+
+  def generate_code(name, contents) do
+    overrides_stringified = stringify_overrides(contents)
+                            |> IO.inspect
+    stringified =
+      contents
+      |> Enum.filter(fn
+        {:@, _, [{:override, _, _}]} -> false
+        {_, _, _} -> true
+      end)
+      |> Enum.map(&Macro.to_string/1)
+      |> IO.inspect
+
+    quote do
+      def unquote(:"#{to_string(name)}_extensions")() do
+        unquote(stringified)
+      end
+
+      def unquote(:"#{to_string(name)}_overrides")() do
+        unquote(overrides_stringified)
+      end
+    end
+  end
+
   def stringify_overrides(contents) do
       contents
       |> Enum.with_index(fn

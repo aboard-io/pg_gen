@@ -193,7 +193,11 @@ defmodule PgGen.Utils do
   def deduplicate_joins(associations), do: associations |> dedupe_first_pass |> dedupe_second_pass
 
   def deduplicate_references(associations) do
-    associations |> dedupe_first_pass() |> deduplicate_associations() |> dedupe_second_pass() |> dedupe_third_pass()
+    associations
+    |> dedupe_first_pass()
+    |> deduplicate_associations()
+    |> dedupe_second_pass()
+    |> dedupe_third_pass()
   end
 
   def does_module_exist(mod_str) when is_binary(mod_str) do
@@ -208,12 +212,17 @@ defmodule PgGen.Utils do
     end
   end
 
-  def test do
-    PgGen.Utils.deduplicate_associations([
-      {:many_to_many, "attachments", "Attachment",
-       [join_through: "pinned_items", join_keys: [{"comment_id", "id"}, {"attachment_id", "id"}]]},
-      {:has_many, "attachments", "Attachment", [fk: "comment_id"]}
-    ])
+  def maybe_apply(module, fun, args \\ [], fallback \\ nil)
+
+  def maybe_apply(module, fun, args, fallback) when is_binary(fun),
+    do: maybe_apply(module, String.to_atom(fun), args, fallback)
+
+  def maybe_apply(module, fun, args, fallback) do
+    if Kernel.function_exported?(module, fun, length(args)) do
+      apply(module, fun, args)
+    else
+      fallback
+    end
   end
 
   defp dedupe_first_pass(associations), do: deduplicate_join_associations(associations, 1)

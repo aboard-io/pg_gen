@@ -28,7 +28,8 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.map(&Builder.build/1)
 
     %{
-      singular_camelized_table_name: singular_camelized_table_name
+      singular_camelized_table_name: singular_camelized_table_name,
+      singular_underscore_table_name: singular_underscore_table_name
     } = Utils.get_table_names(name)
 
     module_name =
@@ -45,7 +46,13 @@ defmodule AbsintheGen.SchemaGenerator do
         {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
       end)
       |> Enum.map(fn {_, name, _, _} = attr ->
-        unless extensions_module_exists && name in extensions_module.overrides do
+        unless extensions_module_exists &&
+                 name in Utils.maybe_apply(
+                   extensions_module,
+                   "#{singular_underscore_table_name}_overrides",
+                   [],
+                   []
+                 ) do
           FieldGenerator.to_string(attr)
         end
       end)
@@ -53,7 +60,13 @@ defmodule AbsintheGen.SchemaGenerator do
     attributes =
       (attributes ++
          if(extensions_module_exists,
-           do: extensions_module.extensions(),
+           do:
+             Utils.maybe_apply(
+               extensions_module,
+               "#{singular_underscore_table_name}_extensions",
+               [],
+               []
+             ),
            else: []
          ))
       |> Enum.join("\n")
@@ -107,7 +120,8 @@ defmodule AbsintheGen.SchemaGenerator do
 
     conditions_and_input_objects = conditions_and_filters <> "\n\n" <> order_by_enums
 
-    mutation_input_objects_and_payloads = generate_mutation_inputs_and_payloads(table)
+    mutation_input_objects_and_payloads =
+      generate_mutation_inputs_and_payloads(table, extensions_module, extensions_module_exists)
 
     {name,
      simple_types_template(
@@ -444,42 +458,70 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_mutation_inputs_and_payloads(table) do
-    {create_input_object, create_payload} = generate_insertable_input_and_payload(table)
-    {update_input_object, update_payload} = generate_updatable_input_and_payload(table)
+  def generate_mutation_inputs_and_payloads(table, extensions_module, extensions_module_exists) do
+    {create_input_object, create_payload} =
+      generate_insertable_input_and_payload(table, extensions_module, extensions_module_exists)
+
+    {update_input_object, update_payload} =
+      generate_updatable_input_and_payload(table, extensions_module, extensions_module_exists)
+
     delete_payload = generate_deletable_payload(table)
 
     [create_input_object, create_payload, update_input_object, update_payload, delete_payload]
     |> Enum.join("\n\n")
   end
 
-  def generate_insertable_input_and_payload(%{insertable: true, name: name} = table) do
+  def generate_insertable_input_and_payload(
+        %{insertable: true, name: name} = table,
+        extensions_module,
+        extensions_module_exists
+      ) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
     } = get_table_names(name)
 
     input_name = "create_#{singular_underscore_table_name}_input"
-    input_object = generate_create_input_object(input_name, table.attributes)
+
+    input_object =
+      generate_create_input_object(
+        input_name,
+        table.attributes,
+        extensions_module,
+        extensions_module_exists
+      )
+
     payload = generate_mutation_payload(singular_underscore_table_name, "create")
 
     {input_object, payload}
   end
 
-  def generate_insertable_input_and_payload(_), do: {"", ""}
+  def generate_insertable_input_and_payload(_, _, _), do: {"", ""}
 
-  def generate_updatable_input_and_payload(%{updatable: true, name: name} = table) do
+  def generate_updatable_input_and_payload(
+        %{updatable: true, name: name} = table,
+        extensions_module,
+        extensions_module_exists
+      ) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
     } = get_table_names(name)
 
     input_name = "update_#{singular_underscore_table_name}"
-    input_object = generate_update_input_object(input_name, table.attributes)
+
+    input_object =
+      generate_update_input_object(
+        input_name,
+        table.attributes,
+        extensions_module,
+        extensions_module_exists
+      )
+
     payload = generate_mutation_payload(singular_underscore_table_name, "update")
 
     {input_object, payload}
   end
 
-  def generate_updatable_input_and_payload(_), do: {"", ""}
+  def generate_updatable_input_and_payload(_, _, _), do: {"", ""}
 
   def generate_deletable_payload(%{deletable: true, name: name}) do
     %{
@@ -491,30 +533,81 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_deletable_payload(_), do: ""
 
-  def generate_create_input_object(input_object_name, attributes) do
+  def generate_create_input_object(
+        input_object_name,
+        attributes,
+        extensions_module,
+        extensions_module_exists
+      ) do
     fields =
       attributes
+      |> Enum.filter(fn %{name: name} ->
+        if extensions_module_exists &&
+             name in Utils.maybe_apply(
+               extensions_module,
+               "#{input_object_name}_overrides",
+               [],
+               []
+             ) do
+          false
+        else
+          true
+        end
+      end)
       |> Enum.map(&generate_field/1)
+
+    field_strs =
+      if extensions_module_exists do
+        fields ++ Utils.maybe_apply(extensions_module, "#{input_object_name}_extensions", [], [])
+      else
+        fields
+      end
       |> Enum.join("\n")
 
     """
     input_object :#{input_object_name} do
-      #{fields}
+      #{field_strs}
     end
     """
   end
 
-  def generate_update_input_object(input_object_name, attributes) do
+  def generate_update_input_object(
+        input_object_name,
+        attributes,
+        extensions_module,
+        extensions_module_exists
+      ) do
     primary_key = Enum.find(attributes, fn attr -> !is_not_primary_key(attr) end)
 
     patch_fields =
       attributes
+      |> Enum.filter(fn %{name: name} ->
+        if extensions_module_exists &&
+             name in Utils.maybe_apply(
+               extensions_module,
+               "#{input_object_name}_patch_overrides",
+               [],
+               []
+             ) do
+          false
+        else
+          true
+        end
+      end)
       |> Enum.map(fn field -> generate_field(field, true) end)
+
+    patch_field_strs =
+      if extensions_module_exists do
+        patch_fields ++
+          Utils.maybe_apply(extensions_module, "#{input_object_name}_patch_extensions", [], [])
+      else
+        patch_fields
+      end
       |> Enum.join("\n")
 
     """
     input_object :#{input_object_name}_patch do
-      #{patch_fields}
+      #{patch_field_strs}
     end
     input_object :#{input_object_name}_input do
       field :#{primary_key.name}, non_null(#{process_type(primary_key.type)})
@@ -752,15 +845,15 @@ defmodule AbsintheGen.SchemaGenerator do
     """
       defmodule #{module_name}.Types.Custom.JSON do
       @moduledoc \"\"\"
-      The Json scalar type allows arbitrary JSON values to be passed in and out.
+      The JSON scalar type allows arbitrary JSON values to be passed in and out.
       Requires `{ :jason, "~> 1.1" }` package: https://github.com/michalmuskala/jason
       \"\"\"
       use Absinthe.Schema.Notation
 
-      scalar :json, name: "Json" do
+      scalar :json, name: "JSON" do
         description(\"\"\"
-        The `Json` scalar type represents arbitrary json string data, represented as UTF-8
-        character sequences. The Json type is most often used to represent a free-form
+        The `JSON` scalar type represents arbitrary json string data, represented as UTF-8
+        character sequences. The JSON type is most often used to represent a free-form
         human-readable json string.
         \"\"\")
 
