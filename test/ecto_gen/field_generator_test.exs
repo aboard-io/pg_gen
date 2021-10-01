@@ -44,4 +44,11 @@ defmodule EctoGen.FieldGeneratorTest do
     assert FieldGenerator.to_string(ref) ==
              "many_to_many :users, User, join_through: \"user_objects\""
   end
+
+  test "it can have a foreign key as a primary key" do
+    ref = {:belongs_to, "users", "User", pk: "user_id", type: "uuid"}
+
+    assert FieldGenerator.to_string(ref) ==
+             "belongs_to :users, User, primary_key: true, type: Ecto.UUID"
+  end
 end

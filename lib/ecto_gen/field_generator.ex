@@ -88,6 +88,12 @@ defmodule EctoGen.FieldGenerator do
         :fk ->
           "#{acc}, foreign_key: :#{v}"
 
+        :pk ->
+          "#{acc}, primary_key: true"
+
+        :type ->
+          "#{acc}, type: #{process_type_str(v)}"
+
         :ref ->
           "#{acc}, references: :#{v}"
 

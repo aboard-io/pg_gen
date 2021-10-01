@@ -193,6 +193,10 @@ defmodule PgGen.Codegen do
     HotModule.load(AbsintheGen.SchemaGenerator.connections_resolver_template(web_module),
       file_path: "#{resolver_path}/connections.ex"
     )
+    HotModule.load(AbsintheGen.ResolverGenerator.resolvers_utils_template(web_module),
+      file_path: "#{resolver_path}/utils.ex"
+    )
+
 
     resolvers
     |> Flow.from_enumerable()

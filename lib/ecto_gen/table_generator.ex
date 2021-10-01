@@ -59,7 +59,7 @@ defmodule EctoGen.TableGenerator do
       |> Enum.map(&":#{&1.simplified_name}")
       |> Enum.join(", ")
 
-    # if a table has no primary key
+    # if a table has no default primary key
     {_, _, primary_key_type, _} =
       Enum.find(attributes, fn
         {:field, "id", _type, _options} -> true
@@ -129,7 +129,7 @@ defmodule EctoGen.TableGenerator do
 
 
        @schema_prefix "#{schema}"
-       #{if primary_key_type, do: "@primary_key {:id, #{primary_key_type}, autogenerate: false}"}
+       #{if primary_key_type, do: "@primary_key {:id, #{primary_key_type}, autogenerate: false}", else: "@primary_key false"}
        #{if primary_key_type && primary_key_type != ":integer", do: "@foreign_key_type :binary_id", else: ""}
 
 

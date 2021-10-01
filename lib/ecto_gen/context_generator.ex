@@ -71,18 +71,23 @@ defmodule EctoGen.ContextGenerator do
           Dataloader.Ecto.new(#{app_name}.Repo, query: &query/2)
         end
 
-        def query(queryable, args) do
-          %{
-            __selections: %{
-              table_selections: table_selections,
-              computed_selections: computed_selections
-            }
-          } = args
-
+        def query(
+              queryable,
+              %{
+                __selections: %{
+                  table_selections: table_selections,
+                  computed_selections: computed_selections
+                }
+              } = args
+            ) do
           queryable
           |> Repo.Filter.apply(args)
           |> select(^table_selections)
           |> with_computed_columns(computed_selections)
+        end
+        def query(queryable, args) do
+          queryable
+          |> Repo.Filter.apply(args)
         end
         """
         else

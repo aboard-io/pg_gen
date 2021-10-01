@@ -64,7 +64,7 @@ defmodule PgGen.Builder do
       end
 
     options =
-      build_reference_options(joined_to, join_referenced_table, joined_table_name)
+      build_reference_options(joined_to, join_referenced_table, joined_table_name, external_reference: true)
       |> Keyword.merge(join_keys)
 
     {:many_to_many, joined_table_name, table_name_to_queryable(joined_table_name),
@@ -77,7 +77,7 @@ defmodule PgGen.Builder do
     %{referenced_table: referenced_table} = get_reference_constraint(table.attribute.constraints)
 
     options =
-      build_reference_options(table.attribute, referenced_table, referenced_table.table.name)
+      build_reference_options(table.attribute, referenced_table, referenced_table.table.name, external_reference: true)
 
     column_num = table.attribute.num
 
@@ -89,6 +89,10 @@ defmodule PgGen.Builder do
       end
 
     {relationship, table.name, table_name_to_queryable(table.name), options}
+  end
+
+  def has_primary_key_constraint(constraints) do
+    !is_nil(Enum.find(constraints, fn %{type: type} -> type == :primary_key end))
   end
 
   def get_reference_constraint(constraints) do
@@ -135,20 +139,30 @@ defmodule PgGen.Builder do
         attribute
       ) do
     options =
-      build_reference_options(attribute, referenced_table, table_name)
+      build_reference_options(attribute, referenced_table, table_name, external_reference: false)
       |> Keyword.merge(build_field_options(attribute))
 
     {:belongs_to, (format_assoc(options[:fk], table_name) || table_name) |> Inflex.singularize(),
      table_name_to_queryable(table_name), options}
   end
 
-  def build_reference_options(attribute, referenced_table, table_name) do
-    [:fk, :ref]
+  def build_reference_options(attribute, referenced_table, table_name, [external_reference: external_reference]) do
+    [:fk, :ref, :pk, :type]
     |> Enum.map(fn key ->
       case key do
         :fk ->
           if !is_standard_foreign_key(attribute.name, table_name) do
             {:fk, attribute.name}
+          end
+
+        :pk ->
+          if !external_reference && has_primary_key_constraint(attribute.constraints) do
+            {:pk, attribute.name}
+          end
+
+        :type ->
+          if !external_reference && has_primary_key_constraint(attribute.constraints) do
+            {:type, attribute.type.name}
           end
 
         :ref ->

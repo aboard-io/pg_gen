@@ -67,8 +67,7 @@ defmodule AbsintheGen.ResolverGenerator do
           {table_selections, computed_selections} =
             Resolvers.Utils.get_selections(
               info,
-              #{app_atom}.Repo.#{singular_camelized_table_name}.__schema__(:fields),
-              #{app_atom}.Repo.#{singular_camelized_table_name}.computed_fields()
+              #{app_atom}.Repo.#{singular_camelized_table_name}
             )
 
           {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, table_selections, computed_selections)}
@@ -87,8 +86,7 @@ defmodule AbsintheGen.ResolverGenerator do
           {table_selections, computed_selections} =
             Resolvers.Utils.get_selections(
               info,
-              #{app_atom}.Repo.#{singular_camelized_table_name}.__schema__(:fields),
-              #{app_atom}.Repo.#{singular_camelized_table_name}.computed_fields()
+              #{app_atom}.Repo.#{singular_camelized_table_name}
             )
 
           {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, table_selections, computed_selections), args: args }}
@@ -257,6 +255,44 @@ defmodule AbsintheGen.ResolverGenerator do
     """
     defmodule #{module_name}Web.Resolvers.PgFunctions do
       #{function_strs}
+    end
+    """
+  end
+
+  def resolvers_utils_template(module_name) do
+    """
+    defmodule #{module_name}.Resolvers.Utils do
+      def get_selections(info, repo) do
+        project = Absinthe.Resolution.project(info)
+
+        fields = repo.__schema__(:fields)
+        computed_fields = repo.computed_fields()
+
+        top_level_fields =
+          case Enum.filter(project, &(&1.name == "nodes")) do
+            [] -> project
+            [nodes] -> nodes.selections
+          end
+
+        selections =
+          top_level_fields
+          |> Enum.map(& &1.schema_node.identifier)
+          # Always select primary key(s), since we will need it/them for nested associations
+        selections = selections ++ repo.__schema__(:primary_key)
+          # |> List.insert_at(0, :id)
+
+        table_selections =
+          selections
+          |> Enum.filter(&(&1 in fields))
+          |> IO.inspect()
+
+        computed_selections =
+          selections
+          |> Enum.filter(&(&1 in computed_fields))
+          |> IO.inspect()
+
+        {table_selections, computed_selections}
+      end
     end
     """
   end
