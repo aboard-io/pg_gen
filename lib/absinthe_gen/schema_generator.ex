@@ -744,12 +744,11 @@ defmodule AbsintheGen.SchemaGenerator do
       \"\"\"
       def resolve(repo, field_name) do
         fn parent, args, %{context: %{loader: loader}} = info ->
-          {table_selections, computed_selections} =
-            #{module_name}.Resolvers.Utils.get_selections(info, repo)
+          computed_selections =
+            #{module_name}.Resolvers.Utils.get_computed_selections(info, repo)
 
           args =
             Map.put(args, :__selections, %{
-              table_selections: table_selections,
               computed_selections: computed_selections
             })
 

@@ -123,8 +123,8 @@ defmodule Introspection.Model do
 
     attributes =
       attributes
-      |> Enum.filter(fn attr -> attr["classId"] == table_id end)
-      |> Enum.map(
+      |> Stream.filter(fn attr -> attr["classId"] == table_id end)
+      |> Stream.map(
         # "columnLevelSelectGrant" => ?,
         # atttypmod/typeModifier records type-specific data supplied at table creation time (for example, the maximum length of a varchar column). It is passed to type-specific input functions and length coercion functions. The value will generally be -1 for types that do not need atttypmod
         # currently ignoring this in the implementation
@@ -148,8 +148,8 @@ defmodule Introspection.Model do
           }
         end
       )
-      |> Enum.map(fn attr -> add_type_for_attribute(attr, introspection_result["type"]) end)
-      |> Enum.map(fn attr ->
+      |> Stream.map(fn attr -> add_type_for_attribute(attr, introspection_result["type"]) end)
+      |> Stream.map(fn attr ->
         add_constraints_for_attribute(
           attr,
           contraints_for_table,
@@ -216,7 +216,28 @@ defmodule Introspection.Model do
       |> Map.put(:tags, type["tags"])
       |> Map.put(:name, type["name"])
       |> Map.put(:category, type["category"])
+      |> Map.put(:is_pg_array, type["isPgArray"])
       |> Map.put(:enum_variants, type["enumVariants"])
+
+    my_type =
+      if type["isPgArray"] do
+        array_type = Enum.find(types, fn t -> t["id"] == type["arrayItemTypeId"] end)
+
+        my_array_type =
+          %{}
+          |> Map.put(:type_id, array_type["id"])
+          |> Map.put(:description, array_type["description"])
+          |> Map.put(:tags, array_type["tags"])
+          |> Map.put(:name, array_type["name"])
+          |> Map.put(:category, array_type["category"])
+          |> Map.put(:is_pg_array, array_type["isPgArray"])
+          |> Map.put(:enum_variants, array_type["enumVariants"])
+
+
+        Map.put(my_type, :array_type, my_array_type)
+      else
+        my_type
+      end
 
     Map.put(attr, :type, my_type)
   end
@@ -494,6 +515,7 @@ defmodule Introspection.Model do
 
   def sort_functions_by_type(functions, tables) do
     table_names = Enum.map(tables, fn %{name: name} -> name end)
+
     acc = %{
       computed_columns_by_table: Enum.map(table_names, &{&1, []}) |> Enum.into(%{}),
       queries: [],
@@ -510,6 +532,7 @@ defmodule Introspection.Model do
           table_name ->
             func_name_re = Regex.compile!("^#{table_name}_")
             simplified_name = String.replace(function.name, func_name_re, "")
+
             if function.name === "workflows_active_object_tasks" do
               IO.inspect(simplified_name, label: "Okay so this seems fine?")
               IO.inspect(table_name)

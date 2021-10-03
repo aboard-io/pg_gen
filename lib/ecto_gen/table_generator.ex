@@ -3,13 +3,13 @@ defmodule EctoGen.TableGenerator do
   alias EctoGen.FieldGenerator
 
   def generate(%{name: name, attributes: attributes} = table, computed_fields, schema) do
-    attributes =
+    built_attributes =
       attributes
       |> Enum.map(&Builder.build/1)
       |> Utils.deduplicate_associations()
 
     required_fields =
-      attributes
+      built_attributes
       |> Enum.filter(&is_required/1)
       |> Enum.map(fn
         {:field, name, _, _} ->
@@ -20,7 +20,7 @@ defmodule EctoGen.TableGenerator do
       end)
 
     foreign_key_constraints =
-      attributes
+      built_attributes
       |> Enum.filter(fn
         {:belongs_to, _, _, _} -> true
         {_, _, _, _} -> false
@@ -31,7 +31,7 @@ defmodule EctoGen.TableGenerator do
       end)
 
     all_fields =
-      attributes
+      built_attributes
       |> Enum.map(fn {field_or_assoc, name, _, options} ->
         case field_or_assoc do
           :field -> ":#{name}"
@@ -41,7 +41,7 @@ defmodule EctoGen.TableGenerator do
       end)
 
     attribute_string =
-      attributes
+      built_attributes
       |> Enum.map(&FieldGenerator.to_string/1)
       |> Enum.sort()
       |> Enum.reverse()
@@ -61,7 +61,7 @@ defmodule EctoGen.TableGenerator do
 
     # if a table has no default primary key
     {_, _, primary_key_type, _} =
-      Enum.find(attributes, fn
+      Enum.find(built_attributes, fn
         {:field, "id", _type, _options} -> true
         _ -> false
       end) || {nil, nil, nil, nil}
@@ -74,7 +74,7 @@ defmodule EctoGen.TableGenerator do
       end
 
     belongs_to_aliases =
-      attributes
+      built_attributes
       |> Enum.filter(fn {type, _, _, _} -> type == :belongs_to end)
       |> Enum.map(fn {_, _, alias, _} -> alias end)
 
@@ -165,6 +165,17 @@ defmodule EctoGen.TableGenerator do
             end
 
           # Computed fields
+          def to_pg_row(%{} = map) do
+            [#{Enum.map(attributes, &("{:#{&1.name}, :#{&1.type.name}}")) |> Enum.join(", ")}]
+            |> Enum.map(fn
+              {field, :uuid} -> case Map.get(map, field) do
+                nil -> nil
+                id -> Ecto.UUID.dump!(id)
+              end
+              {field, _} -> Map.get(map, field)
+            end)
+            |> List.to_tuple()
+          end
           def computed_fields do
             [#{computed_fields_fun_str}]
           end

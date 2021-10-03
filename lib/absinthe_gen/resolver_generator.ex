@@ -64,13 +64,13 @@ defmodule AbsintheGen.ResolverGenerator do
       unless extensions_module_exists && select_name in extensions_module.overrides() do
         """
         def #{singular_underscore_table_name}(_, %{id: id}, info) do
-          {table_selections, computed_selections} =
-            Resolvers.Utils.get_selections(
+          computed_selections =
+            Resolvers.Utils.get_computed_selections(
               info,
               #{app_atom}.Repo.#{singular_camelized_table_name}
             )
 
-          {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, table_selections, computed_selections)}
+          {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections)}
         end
         """
       else
@@ -83,13 +83,13 @@ defmodule AbsintheGen.ResolverGenerator do
       unless extensions_module_exists && select_all_name in extensions_module.overrides() do
         """
         def #{name}(_, args, info) do
-          {table_selections, computed_selections} =
-            Resolvers.Utils.get_selections(
+          computed_selections =
+            Resolvers.Utils.get_computed_selections(
               info,
               #{app_atom}.Repo.#{singular_camelized_table_name}
             )
 
-          {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, table_selections, computed_selections), args: args }}
+          {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), args: args }}
         end
         """
       else
@@ -262,36 +262,17 @@ defmodule AbsintheGen.ResolverGenerator do
   def resolvers_utils_template(module_name) do
     """
     defmodule #{module_name}.Resolvers.Utils do
-      def get_selections(info, repo) do
+      def get_computed_selections(info, repo) do
         project = Absinthe.Resolution.project(info)
 
-        fields = repo.__schema__(:fields)
         computed_fields = repo.computed_fields()
 
-        top_level_fields =
-          case Enum.filter(project, &(&1.name == "nodes")) do
-            [] -> project
-            [nodes] -> nodes.selections
-          end
-
-        selections =
-          top_level_fields
-          |> Enum.map(& &1.schema_node.identifier)
-          # Always select primary key(s), since we will need it/them for nested associations
-        selections = selections ++ repo.__schema__(:primary_key)
-          # |> List.insert_at(0, :id)
-
-        table_selections =
-          selections
-          |> Enum.filter(&(&1 in fields))
-          |> IO.inspect()
-
-        computed_selections =
-          selections
-          |> Enum.filter(&(&1 in computed_fields))
-          |> IO.inspect()
-
-        {table_selections, computed_selections}
+        case Enum.filter(project, &(&1.name == "nodes")) do
+          [] -> project
+          [nodes] -> nodes.selections
+        end
+        |> Enum.map(& &1.schema_node.identifier)
+        |> Enum.filter(&(&1 in computed_fields))
       end
     end
     """

@@ -75,14 +75,12 @@ defmodule EctoGen.ContextGenerator do
               queryable,
               %{
                 __selections: %{
-                  table_selections: table_selections,
                   computed_selections: computed_selections
                 }
               } = args
             ) do
           queryable
           |> Repo.Filter.apply(args)
-          |> select(^table_selections)
           |> with_computed_columns(computed_selections)
         end
         def query(queryable, args) do
@@ -90,9 +88,9 @@ defmodule EctoGen.ContextGenerator do
           |> Repo.Filter.apply(args)
         end
         """
-        else
-          ""
-        end}
+      else
+        ""
+      end}
       end
       """
 
@@ -105,45 +103,36 @@ defmodule EctoGen.ContextGenerator do
       get_table_names(name)
 
     """
-    def get_#{Inflex.singularize(lower_case_table_name)}!(id, selections \\\\ [], computed_selections \\\\ []) do
+    def get_#{Inflex.singularize(lower_case_table_name)}!(id, computed_selections \\\\ []) do
       from(#{table_name})
-      |> maybe_select(selections)
       |> with_computed_columns(computed_selections)
       |> Repo.get!(id)
     end
 
-    def list_#{Inflex.pluralize(lower_case_table_name)}(args, selections \\\\ [], computed_selections \\\\ []) do
+    def list_#{Inflex.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
       from(#{table_name})
       |> Repo.Filter.apply(args)
-      |> maybe_select(selections)
       |> with_computed_columns(computed_selections)
       |> Repo.all()
     end
 
-    def maybe_select(query, []), do: query
-    def maybe_select(query, selections), do: select(query, ^selections)
-
     def with_computed_columns(query, []), do: query
-    #{if length(computed_columns) > 0, do:
-    """
-    def with_computed_columns(query, selections) do
-      #{Enum.map(computed_columns, fn %{name: name, simplified_name: simplified_name} ->
-      """
-      query =
-        if :#{simplified_name} in selections do
-          query
-          |> select_merge([t], %{
-            #{simplified_name}: fragment("select #{schema}.#{name}(?)", t)
-          })
-        else
-          query
-        end
-      """
-      end)
-      |> Enum.join("\n\n")}
-      query
-    end
-    """}
+    #{if length(computed_columns) > 0, do: """
+      def with_computed_columns(query, selections) do
+        #{Enum.map(computed_columns, fn %{name: name, simplified_name: simplified_name} -> """
+        query =
+          if :#{simplified_name} in selections do
+            query
+            |> select_merge([t], %{
+              #{simplified_name}: fragment("select #{schema}.#{name}(?)", t)
+            })
+          else
+            query
+          end
+        """ end) |> Enum.join("\n\n")}
+        query
+      end
+      """}
     """
   end
 
@@ -375,22 +364,10 @@ defmodule EctoGen.ContextGenerator do
       ) do
     arg_strs = Enum.join(arg_names, ", ")
 
-    IO.puts(table.name)
-    IO.puts(name)
+    names = PgGen.Utils.get_table_names(table.name)
 
     cast_values =
-      table.attributes
-      |> Enum.map(fn attr -> Map.put(attr, :name, "#{List.first(arg_names)}.#{attr.name}") end)
-      |> generate_args_str()
-
-      # |> Enum.map(fn %{name: name, type: type} ->
-      # end)
-      |> IO.inspect(label: "Cast values")
-
-    pg_args =
-      1..length(table.attributes)
-      |> Enum.map(&"$#{&1}")
-      |> Enum.join(", ")
+      "#{names.singular_camelized_table_name}.to_pg_row(#{List.first(arg_names)})"
 
     result_str = get_result_str(return_type, returns_set)
 
@@ -405,10 +382,7 @@ defmodule EctoGen.ContextGenerator do
         {:ok, %Postgrex.Result{ rows: #{return_match}}} =
           Repo.query(
         \"\"\"
-        select #{schema}.#{name}(
-        (select 
-            cast((#{pg_args}) as #{schema}.#{table.name})
-        ))
+        select #{schema}.#{name}($1)
         \"\"\",
         [
           #{cast_values}
@@ -421,10 +395,29 @@ defmodule EctoGen.ContextGenerator do
 
   defp generate_args_str(arg_types) do
     Enum.map(arg_types, fn
-      %{type: %{name: "uuid"}, name: name} -> "Ecto.UUID.dump!(#{name})"
+      %{type: %{name: "uuid"}, name: name} ->
+        "Ecto.UUID.dump!(#{name})"
+
+      # if it's an array, will need to handle its contents
+      # if it's a record, conevert it to a tuple
+      %{type: %{array_type: %{category: "C", name: table_name}}, name: name} ->
+        names = Utils.get_table_names(table_name)
+
+        repo_name =
+          PgGen.LocalConfig.get_app_name() <> ".Repo." <> names.singular_camelized_table_name
+
+        "Enum.map(#{name}, &#{repo_name}.to_pg_row/1)"
+
+      # if it's an array of UUIDs, run UUID.dump!
+      %{type: %{array_type: %{name: "uuid"}}, name: name} ->
+        "Enum.map(#{name}, &Ecto.UUID.dump!/1)"
+
       # if it's an enum, it comes in as an atom; postgrex will need a string
-      %{type: %{category: "E"}, name: name} -> "to_string(#{name})"
-      %{name: name} -> name
+      %{type: %{category: "E"}, name: name} ->
+        "to_string(#{name})"
+
+      %{name: name} ->
+        name
     end)
     |> Enum.join(", ")
   end
