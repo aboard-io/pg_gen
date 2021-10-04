@@ -11,7 +11,7 @@ defmodule AbsintheGen.FieldGenerator do
     "bool" => "boolean",
     "int4" => "integer",
     # for postgres functions that return void, we'll return a "success" string
-    "void" => "string",
+    "void" => "string"
   }
 
   @type_list Enum.map(@type_map, fn {k, _} -> k end)
@@ -45,10 +45,20 @@ defmodule AbsintheGen.FieldGenerator do
       process_type(type, options)
       |> wrap_non_null_type(options)
 
-    "field :#{Inflex.singularize(name)}, #{type_str} do"
-    |> process_options(field)
-    |> with_end
+    relation =
+      "field :#{Inflex.singularize(name)}, #{type_str} do"
+      |> process_options(field)
+      |> with_end
+
+    column =
+      __MODULE__.to_string(
+        {:field, Keyword.get(options, :fk) || "#{name}_id",
+         process_type(Keyword.get(options, :fk_type), options), options}
+      )
+
+    column <> "\n" <> relation
   end
+
   def to_string({:has_one, name, type, options}, table) do
     to_string({:belongs_to, name, type, options}, table)
   end
@@ -73,9 +83,10 @@ defmodule AbsintheGen.FieldGenerator do
     |> with_end
   end
 
-  def process_type(type, options) when type in @type_list do 
+  def process_type(type, options) when type in @type_list do
     process_type(@type_map[type], options)
   end
+
   def process_type("enum", options) do
     ":" <> Keyword.get(options, :enum_name)
   end
@@ -162,7 +173,7 @@ defmodule AbsintheGen.FieldGenerator do
   end
 
   def default_order_by(%{indexed_attrs: indexed_attrs}) do
-    {name, _} = indexed_attrs |> List.first
+    {name, _} = indexed_attrs |> List.first()
     "{:asc, :#{name}}"
   end
 

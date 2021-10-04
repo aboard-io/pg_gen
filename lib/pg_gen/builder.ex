@@ -143,7 +143,7 @@ defmodule PgGen.Builder do
       |> Keyword.merge(build_field_options(attribute))
 
     {:belongs_to, (format_assoc(options[:fk], table_name) || table_name) |> Inflex.singularize(),
-     table_name_to_queryable(table_name), options}
+     table_name_to_queryable(table_name), Keyword.put_new(options, :fk_type, attribute.type.name)}
   end
 
   def build_reference_options(attribute, referenced_table, table_name, [external_reference: external_reference]) do
@@ -153,6 +153,8 @@ defmodule PgGen.Builder do
         :fk ->
           if !is_standard_foreign_key(attribute.name, table_name) do
             {:fk, attribute.name}
+          else
+            {:standard_fk, attribute.name}
           end
 
         :pk ->
