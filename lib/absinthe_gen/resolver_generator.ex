@@ -69,7 +69,7 @@ defmodule AbsintheGen.ResolverGenerator do
               info,
               #{app_atom}.Repo.#{singular_camelized_table_name}
             )
-
+    
           {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections)}
         end
         """
@@ -88,7 +88,7 @@ defmodule AbsintheGen.ResolverGenerator do
               info,
               #{app_atom}.Repo.#{singular_camelized_table_name}
             )
-
+    
           {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), args: args }}
         end
         """
@@ -192,6 +192,7 @@ defmodule AbsintheGen.ResolverGenerator do
         name: name,
         return_type: %{type: %{name: type_name}},
         arg_names: arg_names,
+        is_stable: is_stable,
         returns_set: true
       }) do
     context_module_str = type_name |> Inflex.singularize() |> Macro.camelize()
@@ -201,7 +202,7 @@ defmodule AbsintheGen.ResolverGenerator do
     def #{name}(_, args, _) do
       %{
         #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-      } = args
+        } = #{if is_stable, do: "args", else: "args.input"}
       {:ok, %{nodes: #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context},"} args), args: args}}
     end
     """
@@ -223,7 +224,7 @@ defmodule AbsintheGen.ResolverGenerator do
     def #{name}(#{if is_stable, do: "_", else: ""}parent, args, _) do
       %{
         #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-      } = args
+      } = #{if is_stable, do: "args", else: "args.input"}
       {:ok, #{return_value}}
     end
     """
@@ -238,14 +239,14 @@ defmodule AbsintheGen.ResolverGenerator do
         %{return_type: %{composite_type: true}} -> true
         _ -> false
       end)
-      |> Enum.map(fn %{name: name, arg_names: arg_names} ->
+      |> Enum.map(fn %{name: name, arg_names: arg_names, is_stable: is_stable} ->
         arg_names_str = Enum.join(arg_names, ", ")
 
         """
         def #{name}(_, args, _) do
           %{
             #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-          } = args
+          } = #{if is_stable, do: "args", else: "args.input"}
           {:ok, #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str})}
         end
         """

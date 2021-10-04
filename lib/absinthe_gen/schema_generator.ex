@@ -617,9 +617,10 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_custom_function_mutations(mutation_functions, tables) do
-    functions =
+    {functions, input_objects} =
       mutation_functions
       |> Enum.map(&generate_custom_function_query(&1, tables))
+      |> sort_functions_and_inputs()
 
     payloads =
       mutation_functions
@@ -631,7 +632,7 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.uniq()
       |> Enum.map(fn return_type_name -> generate_mutation_payload(return_type_name, "mutate") end)
 
-    {functions, payloads}
+    {functions, payloads ++ input_objects}
   end
 
   # def generate_custom_function_mutation(function, tables) do
@@ -1029,8 +1030,12 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def db_function_queries(functions, tables) do
+    {functions, _input_objects} =
+      functions
+      |> Enum.map(&generate_custom_function_query(&1, tables))
+      |> sort_functions_and_inputs()
+
     functions
-    |> Enum.map(&generate_custom_function_query(&1, tables))
   end
 
   def generate_custom_function_query(
@@ -1068,13 +1073,13 @@ defmodule AbsintheGen.SchemaGenerator do
         Macro.camelize(type_name) |> Inflex.singularize()
       end
 
-    """
-    field :#{name}, #{FieldGenerator.process_type(type_name, [])}_connection do
-      #{arg_strs}
-      #{connection_arg_str}
-      resolve &Resolvers.#{resolver_module_str}.#{name}/3
-    end
-    """
+    {"""
+     field :#{name}, #{FieldGenerator.process_type(type_name, [])}_connection do
+       #{arg_strs}
+       #{connection_arg_str}
+       resolve &Resolvers.#{resolver_module_str}.#{name}/3
+     end
+     """, ""}
   end
 
   def generate_custom_function_returning_record_to_string(
@@ -1098,12 +1103,34 @@ defmodule AbsintheGen.SchemaGenerator do
           do: FieldGenerator.process_type(type_name, []),
           else: ":mutate_#{Inflex.singularize(type_name)}_payload"
 
-      """
+      function = """
       field :#{name}, #{return_type_str} do
-        #{arg_strs}
+        #{if !is_stable, do: "arg :input, non_null(:#{name}_input)", else: arg_strs}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
       end
       """
+
+      input_object =
+        if !is_stable do
+          field_strs =
+            arg_strs
+            |> String.split("\n")
+            |> Enum.map(fn
+              "arg " <> rest -> "field #{rest}"
+              _ -> ""
+            end)
+            |> Enum.join("\n")
+
+          """
+          input_object :#{name}_input do
+            #{field_strs}
+          end
+          """
+        else
+          ""
+        end
+
+      {function, input_object}
     end
   end
 
@@ -1125,12 +1152,12 @@ defmodule AbsintheGen.SchemaGenerator do
         "#{FieldGenerator.process_type(type_name, [])}"
       end
 
-    """
-    field :#{name}, #{return_type} do
-      #{arg_strs}
-      resolve &Resolvers.PgFunctions.#{name}/3
-    end
-    """
+    {"""
+     field :#{name}, #{return_type} do
+       #{arg_strs}
+       resolve &Resolvers.PgFunctions.#{name}/3
+     end
+     """, ""}
   end
 
   def generate_custom_function_args_str(args, tables) do
@@ -1252,5 +1279,12 @@ defmodule AbsintheGen.SchemaGenerator do
       field :query, :query
     end
     """
+  end
+
+  defp sort_functions_and_inputs(list) do
+    list
+    |> Enum.reduce({[], []}, fn {func, input}, {funs, inputs} ->
+      {[func | funs], [input | inputs]}
+    end)
   end
 end
