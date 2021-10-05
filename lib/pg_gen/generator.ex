@@ -15,7 +15,9 @@ defmodule PgGen.Generator do
 
   def generate_ecto_repos(tables, functions, schema) do
     tables
-    |> Enum.map(fn table -> TableGenerator.generate(table, functions.computed_columns_by_table[table.name], schema) end)
+    |> Enum.map(fn table ->
+      TableGenerator.generate(table, functions.computed_columns_by_table[table.name], schema)
+    end)
     |> Enum.into(%{})
   end
 
@@ -42,7 +44,14 @@ defmodule PgGen.Generator do
   def generate_absinthe(tables, enum_types, functions, schema, app) do
     type_defs =
       tables
-      |> Enum.map(fn table -> SchemaGenerator.generate_types(table, functions.computed_columns_by_table[table.name], tables, schema) end)
+      |> Enum.map(fn table ->
+        SchemaGenerator.generate_types(
+          table,
+          functions.computed_columns_by_table[table.name],
+          tables,
+          schema
+        )
+      end)
 
     connection_defs =
       tables
@@ -71,7 +80,8 @@ defmodule PgGen.Generator do
     # TODO should support mutations here, too
     custom_record_defs = SchemaGenerator.generate_custom_records(functions.queries)
 
-    subscription_str = SchemaGenerator.custom_subscriptions(app.camelized <> "Web")
+    web_app_name = app.camelized <> "Web"
+    subscription_str = SchemaGenerator.custom_subscriptions(web_app_name)
 
     create_mutations =
       tables
@@ -90,7 +100,11 @@ defmodule PgGen.Generator do
 
     mutation_strings =
       Enum.join(
-        create_mutations ++ update_mutations ++ delete_mutations ++ function_mutations,
+        create_mutations ++
+          update_mutations ++
+            delete_mutations ++
+              function_mutations ++
+                SchemaGenerator.user_mutations(web_app_name),
         "\n\n"
       )
 

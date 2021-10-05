@@ -204,13 +204,6 @@ defmodule AbsintheGen.SchemaGenerator do
     extensions_module = Module.concat(Elixir, "#{module_name_web}.Schema.Extends")
     extensions_module_exists = Utils.does_module_exist(extensions_module)
 
-    if !extensions_module_exists do
-      require IEx
-      IEx.pry()
-    else
-      IO.inspect(extensions_module.imports)
-    end
-
     """
     defmodule #{module_name_web}.Schema do
       use Absinthe.Schema
@@ -376,7 +369,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_insertable(%{insertable: true, name: name} = table) do
+  def generate_insertable(%{insertable: true, name: name}) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
     } = table_names = get_table_names(name)
@@ -541,6 +534,7 @@ defmodule AbsintheGen.SchemaGenerator do
       ) do
     fields =
       attributes
+      |> Enum.filter(fn %{insertable: insertable} -> insertable end)
       |> Enum.filter(fn %{name: name} ->
         if extensions_module_exists &&
              name in Utils.maybe_apply(
@@ -581,6 +575,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     patch_fields =
       attributes
+      |> Enum.filter(fn %{updatable: updatable} -> updatable end)
       |> Enum.filter(fn %{name: name} ->
         if extensions_module_exists &&
              name in Utils.maybe_apply(
@@ -782,13 +777,39 @@ defmodule AbsintheGen.SchemaGenerator do
         end
       end
 
-          @doc \"\"\"
-          Usage in an Absinthe schema:
+      def resolve_one(repo, field_name) do
+        fn parent, args, %{context: %{loader: loader}} = info ->
+          computed_selections = ExampleWeb.Resolvers.Utils.get_computed_selections(info, repo)
 
-          ```elixir
-          resolve Connections.resolve_page_info()
-          ```
-          \"\"\"
+          args =
+            Map.put(args, :__selections, %{
+              computed_selections: computed_selections
+            })
+
+          loader
+          |> Dataloader.load(repo, {field_name, args}, parent)
+          |> on_load(fn loader_with_data ->
+            result =
+              Dataloader.get(
+                loader_with_data,
+                repo,
+                {field_name, args},
+                parent
+              )
+
+            {:ok, result}
+          end)
+        end
+      end
+
+
+      @doc \"\"\"
+      Usage in an Absinthe schema:
+
+      ```elixir
+      resolve Connections.resolve_page_info()
+      ```
+      \"\"\"
       def resolve_page_info() do
         fn %{nodes: nodes, args: parent_args}, _, _ ->
           {_dir, col} =
@@ -1029,6 +1050,15 @@ defmodule AbsintheGen.SchemaGenerator do
     end
   end
 
+  def user_mutations(web_app_name) do
+    module = Module.concat(Elixir, "#{web_app_name}.Schema.Extends")
+    if Utils.does_module_exist(module) do
+      module.mutations()
+    else
+      []
+    end
+  end
+
   def db_function_queries(functions, tables) do
     {functions, _input_objects} =
       functions
@@ -1052,11 +1082,15 @@ defmodule AbsintheGen.SchemaGenerator do
     do: generate_custom_function_returning_record_to_string(function, tables)
 
   def generate_custom_function_returning_set_to_string(
-        %{name: name, return_type: %{type: %{name: type_name}} = return_type, args: args},
+        %{
+          name: name,
+          return_type: %{type: %{name: type_name}} = return_type,
+          args: args,
+          is_stable: is_stable,
+          is_strict: is_strict
+        },
         tables
       ) do
-    arg_strs = generate_custom_function_args_str(args, tables)
-
     table = Enum.find(tables, fn %{name: name} -> name == type_name end)
 
     connection_arg_str =
@@ -1073,13 +1107,15 @@ defmodule AbsintheGen.SchemaGenerator do
         Macro.camelize(type_name) |> Inflex.singularize()
       end
 
+    input_object_or_args = generate_input_object_or_args(name, args, is_stable, is_strict, tables)
+
     {"""
      field :#{name}, #{FieldGenerator.process_type(type_name, [])}_connection do
-       #{arg_strs}
+      #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
        #{connection_arg_str}
        resolve &Resolvers.#{resolver_module_str}.#{name}/3
      end
-     """, ""}
+     """, input_object_or_args}
   end
 
   def generate_custom_function_returning_record_to_string(
@@ -1087,12 +1123,11 @@ defmodule AbsintheGen.SchemaGenerator do
           name: name,
           return_type: %{type: %{name: type_name, category: category}},
           is_stable: is_stable,
+          is_strict: is_strict,
           args: args
         } = function,
         tables
       ) do
-    arg_strs = generate_custom_function_args_str(args, tables)
-
     if category == "E" do
       generate_custom_function_returning_scalar_to_string(function, tables)
     else
@@ -1103,34 +1138,16 @@ defmodule AbsintheGen.SchemaGenerator do
           do: FieldGenerator.process_type(type_name, []),
           else: ":mutate_#{Inflex.singularize(type_name)}_payload"
 
+      input_object_or_args = generate_input_object_or_args(name, args, is_stable, is_strict, tables)
+
       function = """
       field :#{name}, #{return_type_str} do
-        #{if !is_stable, do: "arg :input, non_null(:#{name}_input)", else: arg_strs}
+          #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
       end
       """
 
-      input_object =
-        if !is_stable do
-          field_strs =
-            arg_strs
-            |> String.split("\n")
-            |> Enum.map(fn
-              "arg " <> rest -> "field #{rest}"
-              _ -> ""
-            end)
-            |> Enum.join("\n")
-
-          """
-          input_object :#{name}_input do
-            #{field_strs}
-          end
-          """
-        else
-          ""
-        end
-
-      {function, input_object}
+      {function, input_object_or_args}
     end
   end
 
@@ -1139,12 +1156,12 @@ defmodule AbsintheGen.SchemaGenerator do
           name: name,
           return_type: %{type: %{name: type_name}},
           args: args,
+          is_stable: is_stable,
+          is_strict: is_strict,
           returns_set: returns_set
         },
         tables
       ) do
-    arg_strs = generate_custom_function_args_str(args, tables)
-
     return_type =
       if returns_set do
         "list_of(#{FieldGenerator.process_type(type_name, [])})"
@@ -1152,15 +1169,17 @@ defmodule AbsintheGen.SchemaGenerator do
         "#{FieldGenerator.process_type(type_name, [])}"
       end
 
+    input_object_or_args = generate_input_object_or_args(name, args, is_stable, is_strict, tables)
+
     {"""
      field :#{name}, #{return_type} do
-       #{arg_strs}
+      #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
        resolve &Resolvers.PgFunctions.#{name}/3
      end
-     """, ""}
+     """, input_object_or_args}
   end
 
-  def generate_custom_function_args_str(args, tables) do
+  def generate_custom_function_args_str(args, tables, is_strict \\ false) do
     table_names = Enum.map(tables, fn %{name: name} -> name end)
 
     Enum.map(args, fn
@@ -1172,9 +1191,15 @@ defmodule AbsintheGen.SchemaGenerator do
           arg :#{name}, #{process_type(Map.put(type, :name, "create_#{Inflex.singularize(normalized_name)}_input"))}
           """
         else
-          """
-          arg :#{name}, #{process_type(type)}
-          """
+          if is_strict do
+            """
+            arg :#{name}, non_null(#{process_type(type)})
+            """
+          else
+            """
+            arg :#{name}, #{process_type(type)}
+            """
+          end
         end
     end)
     |> Enum.join("")
@@ -1279,6 +1304,31 @@ defmodule AbsintheGen.SchemaGenerator do
       field :query, :query
     end
     """
+  end
+
+  def generate_input_object_or_args(_, args, _, _, _) when length(args) == 0, do: ""
+
+  def generate_input_object_or_args(name, args, is_stable, is_strict, tables) do
+    arg_strs = generate_custom_function_args_str(args, tables, is_strict)
+
+    if !is_stable do
+      field_strs =
+        arg_strs
+        |> String.split("\n")
+        |> Enum.map(fn
+          "arg " <> rest -> "field #{rest}"
+          _ -> ""
+        end)
+        |> Enum.join("\n")
+
+      """
+      input_object :#{name}_input do
+        #{field_strs}
+      end
+      """
+    else
+      arg_strs
+    end
   end
 
   defp sort_functions_and_inputs(list) do

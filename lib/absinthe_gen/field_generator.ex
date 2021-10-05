@@ -40,15 +40,8 @@ defmodule AbsintheGen.FieldGenerator do
     |> process_options({:field, name, type, options})
   end
 
-  def to_string({:belongs_to, name, type, options} = field, _table) do
-    type_str =
-      process_type(type, options)
-      |> wrap_non_null_type(options)
-
-    relation =
-      "field :#{Inflex.singularize(name)}, #{type_str} do"
-      |> process_options(field)
-      |> with_end
+  def to_string({:belongs_to, name, _type, options} = field, _table) do
+    relation = single_relation(field)
 
     column =
       __MODULE__.to_string(
@@ -59,8 +52,8 @@ defmodule AbsintheGen.FieldGenerator do
     column <> "\n" <> relation
   end
 
-  def to_string({:has_one, name, type, options}, table) do
-    to_string({:belongs_to, name, type, options}, table)
+  def to_string({:has_one, name, type, options}, _table) do
+    single_relation({:has_one, Inflex.singularize(name), type, options})
   end
 
   def to_string({:has_many, name, type, options} = field, table) do
@@ -126,7 +119,12 @@ defmodule AbsintheGen.FieldGenerator do
                 :belongs_to ->
                   """
                   #{acc}
-                    resolve dataloader(Repo.#{type})
+                    resolve Connections.resolve_one(Repo.#{type}, :#{name})
+                  """
+                :has_one ->
+                  """
+                  #{acc}
+                    resolve Connections.resolve_one(Repo.#{type}, :#{name})
                   """
 
                 _ ->
@@ -181,5 +179,14 @@ defmodule AbsintheGen.FieldGenerator do
 
   def type_map, do: @type_map
 
+  defp single_relation({_, name, type, options} = field) do 
+    type_str =
+      process_type(type, options)
+      |> wrap_non_null_type(options)
+
+      "field :#{Inflex.singularize(name)}, #{type_str} do"
+      |> process_options(field)
+      |> with_end
+  end
   defp append_line(str1, str2), do: str1 <> "\n" <> str2
 end

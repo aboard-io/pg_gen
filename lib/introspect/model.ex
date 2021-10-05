@@ -6,9 +6,10 @@ defmodule Introspection.Model do
       ) do
     references_and_tables =
       tables
-      |> Enum.filter(fn table -> table["namespaceName"] == schema end)
-      |> Enum.map(&build_table_objects/1)
-      |> Enum.map(fn table -> add_attributes_for_table(table, introspection_result) end)
+      |> Stream.filter(fn table -> table["namespaceName"] == schema end)
+      |> Stream.map(&build_table_objects/1)
+      |> Stream.map(fn table -> add_attributes_for_table(table, introspection_result) end)
+      |> Enum.to_list()
 
     {references, tables} =
       Enum.reduce(references_and_tables, {[], []}, fn
@@ -38,8 +39,9 @@ defmodule Introspection.Model do
         tables,
         references
       )
-      |> Enum.map(fn table -> add_indexes_to_table(table, indexes_by_table_id[table.id]) end)
-      |> Enum.map(&Map.put(&1, :table_names, PgGen.Utils.get_table_names(&1.name)))
+      |> Stream.map(fn table -> add_indexes_to_table(table, indexes_by_table_id[table.id]) end)
+      |> Stream.map(&Map.put(&1, :table_names, PgGen.Utils.get_table_names(&1.name)))
+      |> Enum.to_list()
 
     functions =
       functions
@@ -60,7 +62,11 @@ defmodule Introspection.Model do
         "aclInsertable" => acl_insertable,
         "aclSelectable" => acl_selectable,
         "aclUpdatable" => acl_updatable,
-        "aclDeletable" => acl_deletable
+        "aclDeletable" => acl_deletable,
+        "isSelectable" => is_selectable,
+        "isInsertable" => is_insertable,
+        "isUpdatable" => is_updatable,
+        "isDeletable" => is_deletable
       }) do
     %{
       id: id,
@@ -69,8 +75,47 @@ defmodule Introspection.Model do
       insertable: acl_insertable,
       selectable: acl_selectable,
       updatable: acl_updatable,
-      deletable: acl_deletable
+      deletable: acl_deletable,
+      is_selectable: is_selectable,
+      is_insertable: is_insertable,
+      is_updatable: is_updatable,
+      is_deletable: is_deletable
     }
+  end
+
+  @doc """
+  Notes on access for select/insert/update/delete
+
+  - If a table is false of any of the is fields, no need to look further
+  - If a table is true for the is field, and true for the related acl field, no need to look further
+  - If a table if true for the is field and false for the related acl field, look to attributes
+    - If an attribute is true for the related acl field, then it can be used for that select/insert/update/delete
+    - If no attributes are true for that related acl field, it can't be used
+  """
+  def add_table_accessibility(
+        %{
+          insertable: insertable,
+          selectable: selectable,
+          updatable: updatable,
+          deletable: deletable,
+          is_selectable: is_selectable,
+          is_insertable: is_insertable,
+          is_updatable: is_updatable,
+          is_deletable: is_deletable,
+          attributes: attributes
+        } = table
+      ) do
+    selectable = is_selectable && (selectable || !is_nil(Enum.find(attributes, & &1.selectable)))
+    insertable = is_insertable && (insertable || !is_nil(Enum.find(attributes, & &1.insertable)))
+    updatable = is_updatable && (updatable || !is_nil(Enum.find(attributes, & &1.updatable)))
+    deletable = is_deletable && deletable
+
+    Map.merge(table, %{
+      selectable: selectable,
+      insertable: insertable,
+      updatable: updatable,
+      deletable: deletable
+    })
   end
 
   @doc """
@@ -174,7 +219,27 @@ defmodule Introspection.Model do
         []
       end
 
-    {references ++ join_references, Map.put(table, :attributes, attributes)}
+    has_composite_pk =
+      Enum.filter(attributes, fn %{constraints: constraints} ->
+        Enum.find(constraints, fn
+          %{type: :primary_key} -> true
+          _ -> false
+        end)
+      end)
+      |> length > 1
+    if has_composite_pk do
+      IO.puts("================================")
+      IO.puts("#{table.name} has a composite PK")
+      IO.puts("================================")
+    end
+
+    table_with_attributes =
+      table
+      |> Map.put(:attributes, attributes)
+      |> Map.put(:has_composite_pk, has_composite_pk)
+      |> add_table_accessibility()
+
+    {references ++ join_references, table_with_attributes}
   end
 
   @doc """
@@ -232,7 +297,6 @@ defmodule Introspection.Model do
           |> Map.put(:category, array_type["category"])
           |> Map.put(:is_pg_array, array_type["isPgArray"])
           |> Map.put(:enum_variants, array_type["enumVariants"])
-
 
         Map.put(my_type, :array_type, my_array_type)
       else
@@ -345,12 +409,14 @@ defmodule Introspection.Model do
           acc
 
         true ->
-          %{attributes: attrs, table: %{id: id}} = get_referenced_table(reference)
+          %{attributes: attrs, table: %{id: id}} =
+            get_referenced_table(reference)
 
           new_reference = %{
             table:
               Map.merge(reference.parent_table, %{
-                attribute: reference
+                attribute: reference,
+                has_composite_pk: Map.get(tables_by_id, reference.parent_table.id) |> Map.get(:has_composite_pk)
               }),
             via: attrs
           }
@@ -437,6 +503,11 @@ defmodule Introspection.Model do
       end)
       |> Enum.map(fn attr -> {attr.name, attr.type} end)
 
+    # if table.name == "object_tasks" do
+    #   IO.inspect(boolean_cols)
+    #   require IEx; IEx.pry
+    # end
+    #
     indexed_attrs =
       (indexed_attrs ++ boolean_cols)
       |> Enum.uniq()
@@ -448,6 +519,7 @@ defmodule Introspection.Model do
         %{
           "aclExecutable" => executable,
           "isStable" => is_stable,
+          "isStrict" => is_strict,
           "argNames" => arg_names,
           "argTypeIds" => arg_type_ids,
           "description" => description,
@@ -502,6 +574,7 @@ defmodule Introspection.Model do
     %{
       executable: executable,
       is_stable: is_stable,
+      is_strict: is_strict,
       arg_names: trimmed_arg_names,
       description: description,
       args_count: args_count,

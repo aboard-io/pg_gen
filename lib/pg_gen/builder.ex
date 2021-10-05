@@ -35,9 +35,13 @@ defmodule PgGen.Builder do
       end
 
     if relation == :field do
-      {relation, simplified_name, type, [description: attr.description, virtual: true, is_not_null: false]}
+      {relation, simplified_name, type,
+       [description: attr.description, virtual: true, is_not_null: false]}
     else
-      Logger.warn("Currently not supporting computed fields that return non-scalar values; #{simplified_name} not implemented")
+      Logger.warn(
+        "Currently not supporting computed fields that return non-scalar values; #{simplified_name} not implemented"
+      )
+
       nil
     end
   end
@@ -64,7 +68,9 @@ defmodule PgGen.Builder do
       end
 
     options =
-      build_reference_options(joined_to, join_referenced_table, joined_table_name, external_reference: true)
+      build_reference_options(joined_to, join_referenced_table, joined_table_name,
+        external_reference: true
+      )
       |> Keyword.merge(join_keys)
 
     {:many_to_many, joined_table_name, table_name_to_queryable(joined_table_name),
@@ -77,15 +83,32 @@ defmodule PgGen.Builder do
     %{referenced_table: referenced_table} = get_reference_constraint(table.attribute.constraints)
 
     options =
-      build_reference_options(table.attribute, referenced_table, referenced_table.table.name, external_reference: true)
+      build_reference_options(table.attribute, referenced_table, referenced_table.table.name,
+        external_reference: true
+      )
 
     column_num = table.attribute.num
 
     relationship =
       case get_unique_constraint(table.attribute.constraints) do
-        %{type: :uniq, with: [^column_num]} -> :has_one
-        nil -> :has_many
-        _ -> :has_many
+        %{type: :uniq, with: [^column_num]} ->
+          :has_one
+
+        nil ->
+          case has_primary_key_constraint(table.attribute.constraints) do
+            true ->
+              if Map.get(table, :has_composite_pk) do
+                :has_many
+              else
+                :has_one
+              end
+
+            false ->
+              :has_many
+          end
+
+        _ ->
+          :has_many
       end
 
     {relationship, table.name, table_name_to_queryable(table.name), options}
@@ -146,7 +169,9 @@ defmodule PgGen.Builder do
      table_name_to_queryable(table_name), Keyword.put_new(options, :fk_type, attribute.type.name)}
   end
 
-  def build_reference_options(attribute, referenced_table, table_name, [external_reference: external_reference]) do
+  def build_reference_options(attribute, referenced_table, table_name,
+        external_reference: external_reference
+      ) do
     [:fk, :ref, :pk, :type]
     |> Enum.map(fn key ->
       case key do

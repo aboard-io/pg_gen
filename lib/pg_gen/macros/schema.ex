@@ -24,9 +24,10 @@ defmodule PgGen.Schema do
   end
 
   defmacro mutation(do: contents) do
-    generate_strings(:subscriptions, contents)
+    generate_strings(:mutations, contents)
   end
 
+  defmacro field(name, type, opts \\ [])
   defmacro field(name, type, do: do_block) do
     stringified = Macro.to_string(do_block)
 

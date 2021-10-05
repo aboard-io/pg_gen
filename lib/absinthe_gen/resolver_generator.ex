@@ -198,12 +198,18 @@ defmodule AbsintheGen.ResolverGenerator do
     context_module_str = type_name |> Inflex.singularize() |> Macro.camelize()
     args_for_context = Enum.join(arg_names, ", ")
 
+    has_args = length(arg_names) > 0
+
     """
     def #{name}(_, args, _) do
+      #{if has_args do
+      """
       %{
         #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
         } = #{if is_stable, do: "args", else: "args.input"}
-      {:ok, %{nodes: #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context},"} args), args: args}}
+      """
+      end}
+      {:ok, %{nodes: #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context},"} args), args: args}}
     end
     """
   end
@@ -220,11 +226,16 @@ defmodule AbsintheGen.ResolverGenerator do
     return_value =
       get_custom_return_value(context_module_str, name, arg_names, type_name, is_stable)
 
+    has_args = length(arg_names) > 0
     """
-    def #{name}(#{if is_stable, do: "_", else: ""}parent, args, _) do
+    def #{name}(#{if is_stable, do: "_", else: ""}parent, #{if has_args, do: "args", else: "_"}, _) do
+      #{if has_args do
+      """
       %{
         #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-      } = #{if is_stable, do: "args", else: "args.input"}
+        } = #{if is_stable, do: "args", else: "args.input"}
+      """
+      end}
       {:ok, #{return_value}}
     end
     """
@@ -242,11 +253,16 @@ defmodule AbsintheGen.ResolverGenerator do
       |> Enum.map(fn %{name: name, arg_names: arg_names, is_stable: is_stable} ->
         arg_names_str = Enum.join(arg_names, ", ")
 
+        has_args = length(arg_names) > 0
         """
-        def #{name}(_, args, _) do
+        def #{name}(_, #{if has_args, do: "args", else: "_"}, _) do
+          #{if has_args do
+          """
           %{
             #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-          } = #{if is_stable, do: "args", else: "args.input"}
+            } = #{if is_stable, do: "args", else: "args.input"}
+          """
+          end}
           {:ok, #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str})}
         end
         """

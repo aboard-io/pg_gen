@@ -75,7 +75,7 @@ defmodule EctoGen.FieldGenerator do
   end
 
   def to_string({:has_one, name, queryable, options}) do
-    "has_one :#{name}, #{queryable}"
+    "has_one :#{Inflex.singularize(name)}, #{queryable}"
     |> process_options(options)
   end
 
