@@ -218,8 +218,12 @@ defmodule PgGen.Utils do
     do: maybe_apply(module, String.to_atom(fun), args, fallback)
 
   def maybe_apply(module, fun, args, fallback) do
-    if Kernel.function_exported?(module, fun, length(args)) do
-      apply(module, fun, args)
+    if __MODULE__.does_module_exist(module) do
+      if Kernel.function_exported?(module, fun, length(args)) do
+        apply(module, fun, args)
+      else
+        fallback
+      end
     else
       fallback
     end

@@ -102,9 +102,9 @@ defmodule PgGen.Generator do
       Enum.join(
         create_mutations ++
           update_mutations ++
-            delete_mutations ++
-              function_mutations ++
-                SchemaGenerator.user_mutations(web_app_name),
+          delete_mutations ++
+          function_mutations ++
+          SchemaGenerator.user_mutations(web_app_name),
         "\n\n"
       )
 
@@ -145,6 +145,7 @@ defmodule PgGen.Generator do
           functions.queries ++ functions.mutations
         )
       end)
+      |> Enum.filter(fn {_, code} -> !is_nil(code) end)
       |> Enum.into(%{})
 
     pg_function_resolver =

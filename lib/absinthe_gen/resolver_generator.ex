@@ -51,135 +51,140 @@ defmodule AbsintheGen.ResolverGenerator do
 
     app_atom = Macro.camelize(app_name)
 
-    """
-    defmodule #{module_name} do
-      alias #{app_atom}.Contexts.#{singular_camelized_table_name}
-      #{if selectable, do: "alias #{Macro.camelize(app_name)}Web.Resolvers", else: ""}
-      #{if insertable || updatable || deletable do
-      "alias #{app_name}Web.Schema.ChangesetErrors"
-    end}
-
-      #{if selectable do
-      select_name = "#{singular_underscore_table_name}"
-      unless extensions_module_exists && select_name in extensions_module.overrides() do
-        """
-        def #{singular_underscore_table_name}(_, %{id: id}, info) do
-          computed_selections =
-            Resolvers.Utils.get_computed_selections(
-              info,
-              #{app_atom}.Repo.#{singular_camelized_table_name}
-            )
-    
-          {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections)}
-        end
-        """
-      else
-        ""
-      end
-    end}
-
-      #{if selectable do
-      select_all_name = "#{name}"
-      unless extensions_module_exists && select_all_name in extensions_module.overrides() do
-        """
-        def #{name}(_, args, info) do
-          computed_selections =
-            Resolvers.Utils.get_computed_selections(
-              info,
-              #{app_atom}.Repo.#{singular_camelized_table_name}
-            )
-    
-          {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), args: args }}
-        end
-        """
-      else
-        ""
-      end
+    if !insertable && !selectable && !updatable && !deletable && !extensions_module_exists &&
+         function_strings_for_table == "" do
+      nil
     else
-      ""
-    end}
-
-      #{if insertable do
-      insert_name = "create_#{singular_underscore_table_name}"
-      unless extensions_module_exists && insert_name in extensions_module.overrides() do
-        """
-        def create_#{singular_underscore_table_name}(parent, %{input: input}, _) do
-          case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) do
-            {:ok, #{singular_underscore_table_name}} ->
-              {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
-            {:error, changeset} ->
-              {:error,
-                message: "Could not create #{singular_camelized_table_name}",
-                details: ChangesetErrors.error_details(changeset)
-              }
-          end
-        end
-        """
-      else
-        ""
-      end
-    else
-      ""
-    end}
-
-      #{if updatable do
-      update_name = "update_#{singular_underscore_table_name}"
-      unless extensions_module_exists && update_name in extensions_module.overrides() do
-        """
-        def update_#{singular_underscore_table_name}(parent, %{input: input}, _) do
-          #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
-          case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch) do
-            {:ok, #{singular_underscore_table_name}} ->
-              {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
-            {:error, changeset} ->
-              {:error,
-                message: "Could not update #{singular_camelized_table_name}",
-                details: ChangesetErrors.error_details(changeset)
-              }
-          end
-        end
-        """
-      else
-        ""
-      end
-    else
-      ""
-    end}
-      #{if deletable do
-      delete_name = "delete_#{singular_underscore_table_name}"
-      unless extensions_module_exists && delete_name in extensions_module.overrides() do
-        """
-        def #{delete_name}(parent, %{id: id}, _) do
-          #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
-          case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
-            {:ok, #{singular_underscore_table_name}} -> 
-              {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
-            {:error, changeset} ->
-              {:error,
-                message: "Could not update #{singular_camelized_table_name}",
-                details: ChangesetErrors.error_details(changeset)
-              }
-          end
-        end
-        """
-      else
-        ""
-      end
-    else
-      ""
-    end}
-
-      #{if extensions_module_exists do
       """
-        #{extensions_module.extensions() |> Enum.join("\n\n")}
-      """
-    else
-      ""
-    end}
+      defmodule #{module_name} do
+        alias #{app_atom}.Contexts.#{singular_camelized_table_name}
+        #{if selectable, do: "alias #{Macro.camelize(app_name)}Web.Resolvers", else: ""}
+        #{if insertable || updatable || deletable do
+        "alias #{app_name}Web.Schema.ChangesetErrors"
+      end}
 
-      #{function_strings_for_table}
+        #{if selectable do
+        select_name = "#{singular_underscore_table_name}"
+        unless extensions_module_exists && select_name in extensions_module.overrides() do
+          """
+          def #{singular_underscore_table_name}(_, %{id: id}, info) do
+            computed_selections =
+              Resolvers.Utils.get_computed_selections(
+                info,
+                #{app_atom}.Repo.#{singular_camelized_table_name}
+              )
+      
+            {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections)}
+          end
+          """
+        else
+          ""
+        end
+      end}
+
+        #{if selectable do
+        select_all_name = "#{name}"
+        unless extensions_module_exists && select_all_name in extensions_module.overrides() do
+          """
+          def #{name}(_, args, info) do
+            computed_selections =
+              Resolvers.Utils.get_computed_selections(
+                info,
+                #{app_atom}.Repo.#{singular_camelized_table_name}
+              )
+      
+            {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), args: args }}
+          end
+          """
+        else
+          ""
+        end
+      else
+        ""
+      end}
+
+        #{if insertable do
+        insert_name = "create_#{singular_underscore_table_name}"
+        unless extensions_module_exists && insert_name in extensions_module.overrides() do
+          """
+          def create_#{singular_underscore_table_name}(parent, %{input: input}, _) do
+            case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) do
+              {:ok, #{singular_underscore_table_name}} ->
+                {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
+              {:error, changeset} ->
+                {:error,
+                  message: "Could not create #{singular_camelized_table_name}",
+                  details: ChangesetErrors.error_details(changeset)
+                }
+            end
+          end
+          """
+        else
+          ""
+        end
+      else
+        ""
+      end}
+
+        #{if updatable do
+        update_name = "update_#{singular_underscore_table_name}"
+        unless extensions_module_exists && update_name in extensions_module.overrides() do
+          """
+          def update_#{singular_underscore_table_name}(parent, %{input: input}, _) do
+            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
+            case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch) do
+              {:ok, #{singular_underscore_table_name}} ->
+                {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
+              {:error, changeset} ->
+                {:error,
+                  message: "Could not update #{singular_camelized_table_name}",
+                  details: ChangesetErrors.error_details(changeset)
+                }
+            end
+          end
+          """
+        else
+          ""
+        end
+      else
+        ""
+      end}
+        #{if deletable do
+        delete_name = "delete_#{singular_underscore_table_name}"
+        unless extensions_module_exists && delete_name in extensions_module.overrides() do
+          """
+          def #{delete_name}(parent, %{id: id}, _) do
+            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
+            case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
+              {:ok, #{singular_underscore_table_name}} -> 
+                {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
+              {:error, changeset} ->
+                {:error,
+                  message: "Could not update #{singular_camelized_table_name}",
+                  details: ChangesetErrors.error_details(changeset)
+                }
+            end
+          end
+          """
+        else
+          ""
+        end
+      else
+        ""
+      end}
+
+        #{if extensions_module_exists do
+        """
+          #{extensions_module.extensions() |> Enum.join("\n\n")}
+        """
+      else
+        ""
+      end}
+
+        #{function_strings_for_table}
+      end
+      """
     end
-    """
   end
 
   def custom_function_to_string(%{returns_set: true} = function),
@@ -208,7 +213,7 @@ defmodule AbsintheGen.ResolverGenerator do
         #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
         } = #{if is_stable, do: "args", else: "args.input"}
       """
-      end}
+    end}
       {:ok, %{nodes: #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context},"} args), args: args}}
     end
     """
@@ -227,6 +232,7 @@ defmodule AbsintheGen.ResolverGenerator do
       get_custom_return_value(context_module_str, name, arg_names, type_name, is_stable)
 
     has_args = length(arg_names) > 0
+
     """
     def #{name}(#{if is_stable, do: "_", else: ""}parent, #{if has_args, do: "args", else: "_"}, _) do
       #{if has_args do
@@ -235,7 +241,7 @@ defmodule AbsintheGen.ResolverGenerator do
         #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
         } = #{if is_stable, do: "args", else: "args.input"}
       """
-      end}
+    end}
       {:ok, #{return_value}}
     end
     """
@@ -254,6 +260,7 @@ defmodule AbsintheGen.ResolverGenerator do
         arg_names_str = Enum.join(arg_names, ", ")
 
         has_args = length(arg_names) > 0
+
         """
         def #{name}(_, #{if has_args, do: "args", else: "_"}, _) do
           #{if has_args do
@@ -262,7 +269,7 @@ defmodule AbsintheGen.ResolverGenerator do
             #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
             } = #{if is_stable, do: "args", else: "args.input"}
           """
-          end}
+        end}
           {:ok, #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str})}
         end
         """
@@ -276,9 +283,12 @@ defmodule AbsintheGen.ResolverGenerator do
     """
   end
 
-  def resolvers_utils_template(module_name) do
+  def resolvers_utils_template(app_name) do
     """
-    defmodule #{module_name}.Resolvers.Utils do
+    defmodule #{app_name}Web.Resolvers.Utils do
+
+      alias #{app_name}.Repo
+
       def get_computed_selections(info, repo) do
         project = Absinthe.Resolution.project(info)
 
@@ -291,6 +301,36 @@ defmodule AbsintheGen.ResolverGenerator do
         |> Enum.map(& &1.schema_node.identifier)
         |> Enum.filter(&(&1 in computed_fields))
       end
+
+      def cast_computed_selections(struct, computed_selections_with_type) do
+        Enum.reduce(computed_selections_with_type, struct, fn
+          {selection, type}, acc ->
+            raw_result = Map.get(struct, selection)
+            cast_result = cast_computed_selection(raw_result, type)
+            Map.put(acc, selection, cast_result)
+        end)
+      end
+
+      # If it's a list, we need to map over the list to cast the contents
+      def cast_computed_selection(raw_result, type) when is_list(raw_result) do
+        Enum.map(raw_result, &cast_computed_selection(&1, type))
+      end
+
+      # If it's a tuple, it needs to be cast
+      def cast_computed_selection(raw_result, type) when is_tuple(raw_result) do
+        if Kernel.function_exported?(type, :pg_columns, 0) do
+          Repo.load(
+            type,
+            {type.pg_columns(), Tuple.to_list(raw_result)}
+          )
+        else
+          raw_result
+        end
+      end
+
+      # If it's not a tuple, we can leave it as is
+      def cast_computed_selection(result, _), do: result
+
     end
     """
   end

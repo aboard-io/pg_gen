@@ -37,8 +37,9 @@ defmodule EctoGen.FieldGenerator do
 
       false ->
         {is_virtual, options} = Keyword.pop(options, :virtual, false)
+
         type =
-          cond do 
+          cond do
             type in @type_list -> process_type_str(type)
             is_virtual -> process_type_str("any")
             true -> process_type_str(type)
@@ -64,7 +65,10 @@ defmodule EctoGen.FieldGenerator do
   end
 
   def to_string({:has_many, name, queryable, options}) do
-    "has_many :#{name}, #{queryable}"
+    {is_virtual, options} = Keyword.pop(options, :virtual, false)
+    relationship = if is_virtual, do: "field", else: "has_many"
+
+    "#{relationship} :#{name}, #{if is_virtual, do: ":any", else: queryable}"
     |> process_options(options)
   end
 
@@ -75,7 +79,10 @@ defmodule EctoGen.FieldGenerator do
   end
 
   def to_string({:has_one, name, queryable, options}) do
-    "has_one :#{Inflex.singularize(name)}, #{queryable}"
+    {is_virtual, options} = Keyword.pop(options, :virtual, false)
+    relationship = if is_virtual, do: "field", else: "has_many"
+
+    "#{relationship} :#{Inflex.singularize(name)}, #{if is_virtual, do: ":any", else: queryable}"
     |> process_options(options)
   end
 

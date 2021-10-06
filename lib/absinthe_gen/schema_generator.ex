@@ -74,9 +74,16 @@ defmodule AbsintheGen.SchemaGenerator do
     computed_fields =
       computed_fields
       |> Enum.map(&Builder.build/1)
-      |> Enum.filter(&(!is_nil(&1)))
-      |> Enum.map(fn attr ->
-        FieldGenerator.to_string(attr)
+      |> Enum.map(fn {_, name, _, _} = attr ->
+        unless extensions_module_exists &&
+                 name in Utils.maybe_apply(
+                   extensions_module,
+                   "#{singular_underscore_table_name}_overrides",
+                   [],
+                   []
+                 ) do
+          FieldGenerator.to_string(attr)
+        end
       end)
       |> Enum.join("\n")
 
@@ -730,6 +737,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
     defmodule #{module_name}.Resolvers.Connections do
       import Absinthe.Resolution.Helpers, only: [on_load: 2]
+      alias #{module_name}.Resolvers.Utils
 
       @doc \"\"\"
       Usage in an Absinthe schema:
@@ -758,6 +766,13 @@ defmodule AbsintheGen.SchemaGenerator do
                 {field_name, args},
                 parent
               )
+              |> Enum.map(
+                &Utils.cast_computed_selections(
+                  &1,
+                  repo.computed_fields_with_types(computed_selections)
+                )
+              )
+
 
             # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
             # to make the query work with  alimit.
@@ -796,6 +811,7 @@ defmodule AbsintheGen.SchemaGenerator do
                 {field_name, args},
                 parent
               )
+              |> Utils.cast_computed_selections(repo.computed_fields_with_types(computed_selections))
 
             {:ok, result}
           end)
@@ -1041,6 +1057,17 @@ defmodule AbsintheGen.SchemaGenerator do
   def inject_custom_queries(query_defs, functions, tables, module_prefix) do
     module = Module.concat(Elixir, "#{module_prefix}.Schema.Extends")
 
+    functions =
+      functions
+      |> Enum.filter(fn %{name: name} ->
+          name not in Utils.maybe_apply(
+            module,
+            "query_extensions_overrides",
+            [],
+            []
+          )
+      end)
+
     query_defs = query_defs ++ db_function_queries(functions, tables)
 
     if Utils.does_module_exist(module) do
@@ -1052,6 +1079,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def user_mutations(web_app_name) do
     module = Module.concat(Elixir, "#{web_app_name}.Schema.Extends")
+
     if Utils.does_module_exist(module) do
       module.mutations()
     else
@@ -1138,7 +1166,8 @@ defmodule AbsintheGen.SchemaGenerator do
           do: FieldGenerator.process_type(type_name, []),
           else: ":mutate_#{Inflex.singularize(type_name)}_payload"
 
-      input_object_or_args = generate_input_object_or_args(name, args, is_stable, is_strict, tables)
+      input_object_or_args =
+        generate_input_object_or_args(name, args, is_stable, is_strict, tables)
 
       function = """
       field :#{name}, #{return_type_str} do

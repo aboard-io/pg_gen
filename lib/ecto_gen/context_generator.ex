@@ -56,6 +56,7 @@ defmodule EctoGen.ContextGenerator do
        alias #{app_module_name}.Repo
 
        alias #{app_module_name}.Repo.#{table_name}
+       #{if table.selectable, do: "alias #{app_module_name}Web.Resolvers.Utils"}
 
          #{generate_selectable(table, functions.computed_columns_by_table[name], schema)}
          #{generate_insertable(table)}
@@ -107,6 +108,10 @@ defmodule EctoGen.ContextGenerator do
       from(#{table_name})
       |> with_computed_columns(computed_selections)
       |> Repo.get!(id)
+      |> Utils.cast_computed_selection(
+          #{table_name}.computed_fields_with_types(computed_selections)
+         )
+
     end
 
     def list_#{Inflex.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
@@ -114,6 +119,13 @@ defmodule EctoGen.ContextGenerator do
       |> Repo.Filter.apply(args)
       |> with_computed_columns(computed_selections)
       |> Repo.all()
+      |> Enum.map(
+        &Utils.cast_computed_selections(
+          &1,
+          #{table_name}.computed_fields_with_types(computed_selections)
+        )
+      )
+
     end
 
     def with_computed_columns(query, []), do: query
@@ -366,8 +378,7 @@ defmodule EctoGen.ContextGenerator do
 
     names = PgGen.Utils.get_table_names(table.name)
 
-    cast_values =
-      "#{names.singular_camelized_table_name}.to_pg_row(#{List.first(arg_names)})"
+    cast_values = "#{names.singular_camelized_table_name}.to_pg_row(#{List.first(arg_names)})"
 
     result_str = get_result_str(return_type, returns_set)
 

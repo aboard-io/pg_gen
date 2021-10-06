@@ -227,11 +227,6 @@ defmodule Introspection.Model do
         end)
       end)
       |> length > 1
-    if has_composite_pk do
-      IO.puts("================================")
-      IO.puts("#{table.name} has a composite PK")
-      IO.puts("================================")
-    end
 
     table_with_attributes =
       table
@@ -606,11 +601,6 @@ defmodule Introspection.Model do
             func_name_re = Regex.compile!("^#{table_name}_")
             simplified_name = String.replace(function.name, func_name_re, "")
 
-            if function.name === "workflows_active_object_tasks" do
-              IO.inspect(simplified_name, label: "Okay so this seems fine?")
-              IO.inspect(table_name)
-            end
-
             update_in(acc, [:computed_columns_by_table, table_name], fn list ->
               [Map.put(function, :simplified_name, simplified_name) | list]
             end)
@@ -630,7 +620,6 @@ defmodule Introspection.Model do
   defp first_arg_is_record(%{args: []}, _table_name), do: nil
 
   defp first_arg_is_record(%{args: [first_arg | _]}, table_name) do
-    IO.inspect(first_arg.type.name, label: "FIRST ARG TYPE")
     if first_arg.type.name === table_name, do: table_name
   end
 

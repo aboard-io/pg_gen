@@ -34,16 +34,8 @@ defmodule PgGen.Builder do
         {relation_type, table_name_to_queryable(return_type.type.name)}
       end
 
-    if relation == :field do
-      {relation, simplified_name, type,
-       [description: attr.description, virtual: true, is_not_null: false]}
-    else
-      Logger.warn(
-        "Currently not supporting computed fields that return non-scalar values; #{simplified_name} not implemented"
-      )
-
-      nil
-    end
+    {relation, simplified_name, type,
+     [description: attr.description, virtual: true, is_not_null: false]}
   end
 
   def build(%{

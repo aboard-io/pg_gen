@@ -1,8 +1,15 @@
 defmodule PgGen.Schema do
   def generate_strings(name, contents) do
-    contents = 
+    contents =
       contents
       |> get_quoted_contents()
+
+    overrides_stringified =
+      contents
+      |> PgGen.Extend.stringify_overrides()
+
+    contents =
+      contents
       |> Enum.filter(fn
         {:@, _, [{:override, _, _}]} -> false
         _ -> true
@@ -11,6 +18,10 @@ defmodule PgGen.Schema do
     quote do
       def unquote(:"#{name}")() do
         unquote(contents)
+      end
+
+      def unquote(:"#{name}_overrides")() do
+        unquote(overrides_stringified)
       end
     end
   end
@@ -28,6 +39,7 @@ defmodule PgGen.Schema do
   end
 
   defmacro field(name, type, opts \\ [])
+
   defmacro field(name, type, do: do_block) do
     stringified = Macro.to_string(do_block)
 
@@ -71,4 +83,3 @@ defmodule PgGen.Schema do
     end
   end
 end
-

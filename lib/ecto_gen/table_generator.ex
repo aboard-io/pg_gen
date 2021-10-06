@@ -59,6 +59,19 @@ defmodule EctoGen.TableGenerator do
       |> Enum.map(&":#{&1.simplified_name}")
       |> Enum.join(", ")
 
+    computed_fields_with_types_fun_str =
+      computed_fields
+      |> Enum.map(&"{:#{&1.simplified_name}, #{process_return_type(&1)}}")
+      |> Enum.join(", ")
+
+    return_types =
+      computed_fields
+      |> Enum.map(&process_return_type/1)
+      |> Enum.filter(fn
+        ":" <> _ -> false
+        _ -> true
+      end)
+
     # if a table has no default primary key
     {_, _, primary_key_type, _} =
       Enum.find(built_attributes, fn
@@ -103,8 +116,10 @@ defmodule EctoGen.TableGenerator do
           {references, aliases}
       end
 
+    table_name = Inflex.singularize(name) |> Macro.camelize()
+
     aliases =
-      (belongs_to_aliases ++ aliases)
+      (belongs_to_aliases ++ aliases ++ return_types)
       |> Enum.uniq()
       |> Enum.join(", ")
 
@@ -113,7 +128,7 @@ defmodule EctoGen.TableGenerator do
 
     {name,
      Utils.format_code!("""
-     defmodule #{app_name}.Repo.#{Inflex.singularize(name) |> Macro.camelize()} do
+     defmodule #{app_name}.Repo.#{table_name} do
        #{if !is_nil(table.description) do
        """
        @moduledoc \"\"\"
@@ -164,9 +179,20 @@ defmodule EctoGen.TableGenerator do
               # |> unique_constraint(:email)
             end
 
-          # Computed fields
+          # Computed fields helpers
+          @doc \"\"\"
+          A helper function that returns all fields in a schema, in the order Postgres
+          expects them as columns.
+          \"\"\"
+          def pg_columns() do
+            [
+            #{Enum.map(attributes, &":#{&1.name}") |> Enum.join(", ")}
+            ]
+          end
+
+
           def to_pg_row(%{} = map) do
-            [#{Enum.map(attributes, &("{:#{&1.name}, :#{&1.type.name}}")) |> Enum.join(", ")}]
+            [#{Enum.map(attributes, &"{:#{&1.name}, :#{&1.type.name}}") |> Enum.join(", ")}]
             |> Enum.map(fn
               {field, :uuid} -> case Map.get(map, field) do
                 nil -> nil
@@ -179,6 +205,16 @@ defmodule EctoGen.TableGenerator do
           def computed_fields do
             [#{computed_fields_fun_str}]
           end
+
+          def computed_fields_with_types([]) do
+            [#{computed_fields_with_types_fun_str}]
+          end
+
+          def computed_fields_with_types(computed_fields) do
+            computed_fields_with_types([])
+            |> Enum.filter(fn {name, _} -> name in computed_fields end)
+          end
+
        end
      end
      """)}
@@ -416,5 +452,15 @@ defmodule EctoGen.TableGenerator do
 
   def is_required({_, _, _, opts}) do
     !Keyword.get(opts, :has_default) && Keyword.get(opts, :is_not_null)
+  end
+
+  defp process_return_type(%{return_type: %{type: %{name: name, category: "C"}}}) do
+    name
+    |> Inflex.singularize()
+    |> Macro.camelize()
+  end
+
+  defp process_return_type(%{return_type: %{type: %{name: name}}}) do
+    ":#{name}"
   end
 end
