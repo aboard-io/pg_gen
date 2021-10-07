@@ -89,4 +89,19 @@ defmodule PgGen.Extend do
       |> Enum.filter(&(&1 != ""))
       |> Enum.uniq()
   end
+
+  def stringify_omits(contents) do
+      contents
+      |> Enum.with_index(fn
+        # @override :atom
+        {_, _, [{:omit, _, [omissions]}]}, _ ->
+          Enum.map(omissions, &to_string/1)
+
+        _, _ ->
+          ""
+      end)
+      |> Enum.filter(&(&1 != ""))
+      |> List.flatten()
+      |> Enum.uniq()
+  end
 end

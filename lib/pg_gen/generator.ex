@@ -5,6 +5,7 @@ defmodule PgGen.Generator do
   """
   alias EctoGen.{TableGenerator, ContextGenerator}
   alias AbsintheGen.{SchemaGenerator, EnumGenerator, ResolverGenerator}
+  alias PgGen.Utils
 
   def generate_ecto(tables, functions, schema, app) do
     %{
@@ -71,9 +72,17 @@ defmodule PgGen.Generator do
     scalar_filters = SchemaGenerator.generate_scalar_filters()
     scalar_and_enum_filters = scalar_filters <> "\n\n" <> enum_filters
 
+    schema_overrides =
+      Utils.maybe_apply(
+        Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
+        "query_extensions_overrides",
+        [],
+        []
+      )
+
     query_defs =
       tables
-      |> Enum.map(&SchemaGenerator.generate_queries/1)
+      |> Enum.map(&SchemaGenerator.generate_queries(&1, schema_overrides))
       |> SchemaGenerator.inject_custom_queries(functions.queries, tables, app.camelized <> "Web")
       |> Enum.join("\n\n")
 

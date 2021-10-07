@@ -270,11 +270,11 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_queries(table) do
-    generate_selectable(table)
+  def generate_queries(table, overrides) do
+    generate_selectable(table, overrides)
   end
 
-  def generate_selectable(%{selectable: true, name: name} = table) do
+  def generate_selectable(%{selectable: true, name: name} = table, overrides) do
     %{
       singular_camelized_table_name: singular_camelized_table_name,
       plural_underscore_table_name: plural_underscore_table_name,
@@ -284,18 +284,26 @@ defmodule AbsintheGen.SchemaGenerator do
     args = FieldGenerator.generate_args_for_object(table)
 
     """
-    field :#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
-      arg :id, non_null(:uuid62)
-      resolve &Resolvers.#{singular_camelized_table_name}.#{singular_underscore_table_name}/3
-    end
-    field :#{plural_underscore_table_name}, non_null(:#{singular_underscore_table_name}_connection) do
-      #{args}
-      resolve &Resolvers.#{singular_camelized_table_name}.#{plural_underscore_table_name}/3
-    end
+    #{if singular_underscore_table_name not in overrides do
+      """
+      field :#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
+        arg :id, non_null(:uuid62)
+        resolve &Resolvers.#{singular_camelized_table_name}.#{singular_underscore_table_name}/3
+      end
+      """
+    end}
+    #{if plural_underscore_table_name not in overrides do
+      """
+      field :#{plural_underscore_table_name}, non_null(:#{singular_underscore_table_name}_connection) do
+        #{args}
+        resolve &Resolvers.#{singular_camelized_table_name}.#{plural_underscore_table_name}/3
+      end
+      """
+    end}
     """
   end
 
-  def generate_selectable(_), do: ""
+  def generate_selectable(_, _), do: ""
 
   def generate_condition_and_filter_input(%{indexed_attrs: indexed_attrs, name: name}) do
     %{singular_underscore_table_name: singular_underscore_table_name} = get_table_names(name)
@@ -756,10 +764,18 @@ defmodule AbsintheGen.SchemaGenerator do
               computed_selections: computed_selections
             })
 
-          loader
-          |> Dataloader.load(repo, {field_name, args}, parent)
-          |> on_load(fn loader_with_data ->
-            nodes =
+          # If nodes are already loaded, return them. This will be rare,
+          # but is occasionally helpful. E.g., dataloader will spawn new
+          # connections to run queries in parallel, which can cause problems with
+          # RLS (queries for items not yet committed)
+          if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
+            parent
+            |> Map.get(field_name)
+            |> return_nodes(args)
+          else
+            loader
+            |> Dataloader.load(repo, {field_name, args}, parent)
+            |> on_load(fn loader_with_data ->
               Dataloader.get(
                 loader_with_data,
                 repo,
@@ -772,24 +788,27 @@ defmodule AbsintheGen.SchemaGenerator do
                   repo.computed_fields_with_types(computed_selections)
                 )
               )
-
-
-            # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
-            # to make the query work with  alimit.
-            # Here we put the records back in the expected order
-            nodes =
-              case is_integer(Map.get(args, :last)) do
-                false ->
-                  nodes
-
-                true ->
-                  if is_integer(Map.get(args, :first)), do: nodes, else: Enum.reverse(nodes)
-              end
-
-            # passing args to children so we can use order_by to generate cursors
-            {:ok, %{nodes: nodes, args: args}}
-          end)
+              |> return_nodes(args)
+            end)
+          end
         end
+      end
+
+      defp return_nodes(nodes, args) do
+        # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
+        # to make the query work with  alimit.
+        # Here we put the records back in the expected order
+        nodes =
+          case is_integer(Map.get(args, :last)) do
+            false ->
+              nodes
+
+            true ->
+              if is_integer(Map.get(args, :first)), do: nodes, else: Enum.reverse(nodes)
+          end
+
+        # passing args to children so we can use order_by to generate cursors
+        {:ok, %{nodes: nodes, args: args}}
       end
 
       def resolve_one(repo, field_name) do

@@ -29,10 +29,19 @@ defmodule EctoGen.ContextGenerator do
     app_module_name = Inflex.singularize(app_name) |> Macro.camelize()
     table_name = Inflex.singularize(name) |> Macro.camelize()
 
+    module_name = "#{app_module_name}.Contexts.#{table_name}"
+    extension_module_name = "#{module_name}.Extend"
+    overrides = get_overrides(extension_module_name)
+    extensions = get_extensions(extension_module_name)
+
     function_strings_for_table =
       (functions.queries ++ functions.mutations)
       |> Enum.filter(fn
         %{return_type: %{type: %{name: ^name}}} -> true
+        _ -> false
+      end)
+      |> Enum.filter(fn
+        %{name: name} -> name not in overrides
         _ -> false
       end)
       |> Enum.map(&custom_function_to_string(&1, schema))
@@ -50,7 +59,7 @@ defmodule EctoGen.ContextGenerator do
       {name, nil}
     else
       module = """
-      defmodule #{app_module_name}.Contexts.#{table_name} do
+      defmodule #{module_name} do
 
        import Ecto.Query, warn: false
        alias #{app_module_name}.Repo
@@ -58,12 +67,13 @@ defmodule EctoGen.ContextGenerator do
        alias #{app_module_name}.Repo.#{table_name}
        #{if table.selectable, do: "alias #{app_module_name}Web.Resolvers.Utils"}
 
-         #{generate_selectable(table, functions.computed_columns_by_table[name], schema)}
-         #{generate_insertable(table)}
-         #{generate_updatable(table)}
-         #{generate_deletable(table)}
+         #{generate_selectable(table, functions.computed_columns_by_table[name], overrides, schema)}
+         #{generate_insertable(table, overrides)}
+         #{generate_updatable(table, overrides)}
+         #{generate_deletable(table, overrides)}
          #{function_strings_for_table}
          #{computed_columns}
+         #{Enum.join(extensions, "\n\n")}
 
         #{if table.selectable do
         """
@@ -71,7 +81,7 @@ defmodule EctoGen.ContextGenerator do
         def data() do
           Dataloader.Ecto.new(#{app_name}.Repo, query: &query/2)
         end
-
+      
         def query(
               queryable,
               %{
@@ -99,34 +109,45 @@ defmodule EctoGen.ContextGenerator do
     end
   end
 
-  def generate_selectable(%{selectable: true, name: name}, computed_columns, schema) do
+  def generate_selectable(%{selectable: true, name: name}, computed_columns, overrides, schema) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
+    get_name = "get_#{Inflex.singularize(lower_case_table_name)}!"
+    list_name = "list_#{Inflex.pluralize(lower_case_table_name)}"
+
     """
-    def get_#{Inflex.singularize(lower_case_table_name)}!(id, computed_selections \\\\ []) do
-      from(#{table_name})
-      |> with_computed_columns(computed_selections)
-      |> Repo.get!(id)
-      |> Utils.cast_computed_selection(
-          #{table_name}.computed_fields_with_types(computed_selections)
-         )
+    #{if get_name not in overrides do
+      """
+      def #{get_name}(id, computed_selections \\\\ []) do
+        from(#{table_name})
+        |> with_computed_columns(computed_selections)
+        |> Repo.get!(id)
+        |> Utils.cast_computed_selection(
+            #{table_name}.computed_fields_with_types(computed_selections)
+          )
 
-    end
+      end
+      """
+    end}
 
-    def list_#{Inflex.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
-      from(#{table_name})
-      |> Repo.Filter.apply(args)
-      |> with_computed_columns(computed_selections)
-      |> Repo.all()
-      |> Enum.map(
-        &Utils.cast_computed_selections(
-          &1,
-          #{table_name}.computed_fields_with_types(computed_selections)
+    #{if list_name not in overrides do
+      """
+      def list_#{Inflex.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
+        from(#{table_name})
+        |> Repo.Filter.apply(args)
+        |> with_computed_columns(computed_selections)
+        |> Repo.all()
+        |> Enum.map(
+          &Utils.cast_computed_selections(
+            &1,
+            #{table_name}.computed_fields_with_types(computed_selections)
+          )
         )
-      )
 
-    end
+      end
+      """
+    end}
 
     def with_computed_columns(query, []), do: query
     #{if length(computed_columns) > 0, do: """
@@ -148,58 +169,72 @@ defmodule EctoGen.ContextGenerator do
     """
   end
 
-  def generate_selectable(_, _, _), do: ""
+  def generate_selectable(_, _, _, _), do: ""
 
-  def generate_insertable(%{selectable: true, name: name}) do
+  def generate_insertable(%{selectable: true, name: name}, overrides) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
     singular_lowercase = Inflex.singularize(lower_case_table_name)
+    create_name = "create_#{singular_lowercase}"
 
-    """
-    def create_#{singular_lowercase}(attrs) do
-      %#{table_name}{}
-      |> #{table_name}.changeset(attrs)
-      |> Repo.insert(returning: true)
+    if create_name in overrides do
+      ""
+    else
+      """
+      def create_#{singular_lowercase}(attrs) do
+        %#{table_name}{}
+        |> #{table_name}.changeset(attrs)
+        |> Repo.insert(returning: true)
+      end
+      """
     end
-    """
   end
 
-  def generate_insertable(_), do: ""
+  def generate_insertable(_, _), do: ""
 
-  def generate_updatable(%{selectable: true, name: name}) do
+  def generate_updatable(%{selectable: true, name: name}, overrides) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
     singular_lowercase = Inflex.singularize(lower_case_table_name)
+    update_name = "update_#{singular_lowercase}"
 
-    """
-    def update_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, attrs) do
-      #{singular_lowercase}
-      |> #{table_name}.changeset(attrs)
-      |> Repo.update(returning: true)
+    if update_name in overrides do
+      ""
+    else
+      """
+      def update_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, attrs) do
+        #{singular_lowercase}
+        |> #{table_name}.changeset(attrs)
+        |> Repo.update(returning: true)
+      end
+      """
     end
-
-    """
   end
 
-  def generate_updatable(_), do: ""
+  def generate_updatable(_, _), do: ""
 
-  def generate_deletable(%{selectable: true, name: name}) do
+  def generate_deletable(%{selectable: true, name: name}, overrides) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
     singular_lowercase = Inflex.singularize(lower_case_table_name)
+    delete_name = "delete_#{singular_lowercase}"
 
-    """
-    def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}) do
-      #{singular_lowercase}
-      |> Repo.delete()
+    if delete_name in overrides do
+      ""
+    else
+      """
+      def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}) do
+        #{singular_lowercase}
+        |> Repo.delete()
+      end
+      """
     end
-    """
   end
 
-  def generate_deletable(_), do: ""
+  def generate_deletable(_, _), do: ""
 
   def get_table_names(name) do
     %{
@@ -475,5 +510,16 @@ defmodule EctoGen.ContextGenerator do
       true ->
         "result"
     end
+  end
+
+  def get_overrides(module_name) do
+    Example.Contexts.ObjectComment.Extend
+    extensions_module = Module.concat(Elixir, module_name)
+    Utils.maybe_apply(extensions_module, :overrides, [], [])
+  end
+
+  def get_extensions(module_name) do
+    extensions_module = Module.concat(Elixir, module_name)
+    Utils.maybe_apply(extensions_module, :extensions, [], [])
   end
 end
