@@ -254,9 +254,12 @@ defmodule EctoGen.TableGenerator do
         {:ok, data}
       end
 
-      # When dumping data to the database, we *expect* a URI struct
-      # but any value could be inserted into the schema struct at runtime,
-      # so we need to guard against them.
+      def load(data) when is_binary(data) do
+        data
+        |> Jason.decode!()
+        |> load()
+      end
+
       def dump(data) when is_list(data) or is_map(data), do: {:ok, Jason.encode!(data)}
       def dump(_), do: :error
     end
@@ -314,7 +317,17 @@ defmodule EctoGen.TableGenerator do
           end
         end
 
-        defp condition(query, input), do: query |> where(^Enum.into(input, Keyword.new()))
+        defp condition(query, input) do 
+          where_condition =
+          if is_nil(input |> Map.values() |> List.first()) do
+            field = Map.keys(input) |> List.first()
+            dynamic([c], is_nil(field(c, ^field)))
+          else
+            Enum.into(input, Keyword.new())
+          end
+            query |> where(^where_condition)
+        end
+
 
         defp maybe_filter(query, opts) do
           case Map.get(opts, :filter) do

@@ -298,11 +298,22 @@ defmodule AbsintheGen.ResolverGenerator do
           [] -> project
           [nodes] -> nodes.selections
         end
-        |> Enum.map(& &1.schema_node.identifier)
+        |> Enum.map(fn
+          %{schema_node: %{identifier: identifier}} ->
+            identifier
+
+          %Absinthe.Blueprint.Document.Fragment.Spread{name: name} ->
+            info.fragments[name].selections
+            |> Enum.map(fn %{schema_node: %{identifier: identifier}} -> identifier end)
+        end)
+        |> List.flatten()
         |> Enum.filter(&(&1 in computed_fields))
       end
 
-      def cast_computed_selections(struct, computed_selections_with_type) do
+      def cast_computed_selections(result, _) when is_nil(result) do
+        result
+      end
+      def cast_computed_selections(struct, computed_selections_with_type) when is_map(struct) do
         Enum.reduce(computed_selections_with_type, struct, fn
           {selection, type}, acc ->
             raw_result = Map.get(struct, selection)

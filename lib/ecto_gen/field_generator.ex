@@ -80,7 +80,7 @@ defmodule EctoGen.FieldGenerator do
 
   def to_string({:has_one, name, queryable, options}) do
     {is_virtual, options} = Keyword.pop(options, :virtual, false)
-    relationship = if is_virtual, do: "field", else: "has_many"
+    relationship = if is_virtual, do: "field", else: "has_one"
 
     "#{relationship} :#{Inflex.singularize(name)}, #{if is_virtual, do: ":any", else: queryable}"
     |> process_options(options)

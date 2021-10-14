@@ -728,7 +728,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     """
     object :#{singular_underscore_table_name}_connection do
-      field :nodes, list_of(non_null(:#{singular_underscore_table_name}))
+      field :nodes, non_null(list_of(non_null(:#{singular_underscore_table_name})))
 
       field :page_info, non_null(:page_info) do
         resolve Connections.resolve_page_info()
@@ -867,7 +867,14 @@ defmodule AbsintheGen.SchemaGenerator do
               [node | _] -> {order_by, Map.get(node, col)}
             end
 
-          {:ok, %{start_cursor: start_cursor_val, end_cursor: end_cursor_val}}
+          {:ok,
+            %{
+              start_cursor: start_cursor_val,
+              end_cursor: end_cursor_val,
+              has_next_page: true,
+              has_previous_page: true
+            }
+          }
         end
       end
     end
