@@ -513,7 +513,6 @@ defmodule EctoGen.ContextGenerator do
   end
 
   def get_overrides(module_name) do
-    Example.Contexts.ObjectComment.Extend
     extensions_module = Module.concat(Elixir, module_name)
     Utils.maybe_apply(extensions_module, :overrides, [], [])
   end

@@ -40,11 +40,22 @@ defmodule EctoGen.TableGenerator do
         end
       end)
 
+    app_module_name = PgGen.LocalConfig.get_app_name
+    module_name = "#{app_module_name}.Repo.#{Macro.camelize(Inflex.singularize(name))}"
+    extension_module_name = "#{module_name}Extend"
+    overrides = get_overrides(extension_module_name)
+    extensions = get_extensions(extension_module_name)
+
     attribute_string =
       built_attributes
+      |> Enum.filter(fn 
+        {:field, name, _, _} -> !(name in overrides)
+        _ -> true
+      end)
       |> Enum.map(&FieldGenerator.to_string/1)
       |> Enum.sort()
       |> Enum.reverse()
+      |> Enum.concat(extensions)
       |> Enum.join("\n")
 
     computed_fields_string =
@@ -233,24 +244,38 @@ defmodule EctoGen.TableGenerator do
       def type, do: {:array, :map}
 
       # Provide custom casting rules.
-      # Cast strings into the list of maps to be used at runtime
+      # We wrap all incoming JSON in an array when we store it in our cast
+      # function; we unwrap it here. This allows objects or arrays to be retrieved,
+      # since ecto requires us to make it one or the other.
       def cast(json) when is_binary(json) do
         decoded = Jason.decode!(json)
 
-        case is_list(decoded) do
-          true -> {:ok, decoded}
-          false -> {:ok, [decoded]}
-        end
+        {:ok, [decoded]}
+      end
+
+      def cast(data) when is_map(data) or is_list(data) do
+        {:ok, [data]}
       end
 
       # Everything else is a failure though
       def cast(_), do: :error
 
-      def load(data) when is_map(data) do
-        {:ok, [data]}
+      # In our load function, we expect our data to be wrapped in a list. We unwrapped_data
+      # that and return the data inside, which may be a list or a map
+      def load(data) when is_list(data) do
+        if length(data) == 1 do
+          [unwrapped_data] = data
+          if is_list(unwrapped_data) do
+            {:ok, data}
+          else
+            {:ok, unwrapped_data}
+          end
+        else
+          {:ok, data}
+        end
       end
 
-      def load(data) when is_list(data) do
+      def load(data) when is_map(data) do
         {:ok, data}
       end
 
@@ -475,5 +500,15 @@ defmodule EctoGen.TableGenerator do
 
   defp process_return_type(%{return_type: %{type: %{name: name}}}) do
     ":#{name}"
+  end
+
+  def get_overrides(module_name) do
+    extensions_module = Module.concat(Elixir, module_name)
+    Utils.maybe_apply(extensions_module, :overrides, [], [])
+  end
+
+  def get_extensions(module_name) do
+    extensions_module = Module.concat(Elixir, module_name)
+    Utils.maybe_apply(extensions_module, :extensions, [], [])
   end
 end

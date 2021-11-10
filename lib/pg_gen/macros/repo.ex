@@ -1,10 +1,33 @@
 defmodule PgGen.Repo do
+  # Currently only supporting field overrides, not relationships like belongs_to, etc
   defmacro schema(name, do: contents) do
-    quote do
-      @extensions [unquote(contents)] |> Enum.into(%{})
+    {:__block__, [], contents} = contents
 
+    overrides_stringified = PgGen.Extend.stringify_overrides(contents)
+
+    stringified =
+      contents
+      |> Enum.filter(fn
+        {:@, _, [{:override, _, _}]} -> false
+        {_, _, _} -> true
+      end)
+      |> Enum.map(&Macro.to_string/1)
+      # TODO this is pretty brittle, should prob change at some point. It's
+      # cosmetic b/c Macro.to_string/1 will return defs like `def(foo(bar)) do`
+      # |> Enum.map(&String.replace(&1, "def(", "def "))
+      # |> Enum.map(&String.replace(&1, ")) do", ") do"))
+
+    quote do
+      Module.register_attribute(__MODULE__, :override, accumulate: true)
+
+      @extensions unquote(stringified)
+      @overrides unquote(overrides_stringified)
       def extensions do
         @extensions
+      end
+
+      def overrides do
+        @overrides
       end
     end
   end

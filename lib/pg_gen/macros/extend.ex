@@ -33,19 +33,20 @@ defmodule PgGen.Extend do
 
   defmacro object(name, do: contents) do
     {:__block__, [], contents} = contents
-    generate_code(name, contents)
+    generate_code(to_string(name) <> "_objects", contents)
   end
 
   defmacro input_object(name, do: contents) do
     {:__block__, [], contents} = contents
-    generate_code(name, contents)
+    generate_code(to_string(name) <> "_input_objects", contents)
   end
 
   defmacro enum(name, do: contents) do
     {:__block__, [], contents} = contents
-    generate_code(name, contents)
+    generate_code(to_string(name) <> "_enums", contents)
   end
 
+  def generate_code(name, contents) when is_atom(name), do: generate_code(to_string(name), contents)
   def generate_code(name, contents) do
     overrides_stringified = stringify_overrides(contents)
                             |> IO.inspect
@@ -59,11 +60,11 @@ defmodule PgGen.Extend do
       |> IO.inspect
 
     quote do
-      def unquote(:"#{to_string(name)}_extensions")() do
+      def unquote(:"#{name}_extensions")() do
         unquote(stringified)
       end
 
-      def unquote(:"#{to_string(name)}_overrides")() do
+      def unquote(:"#{name}_overrides")() do
         unquote(overrides_stringified)
       end
     end
@@ -81,6 +82,8 @@ defmodule PgGen.Extend do
           case Enum.at(contents, index + 1) do
             {:def, _, [{fn_atom, _, _} | _]} -> to_string(fn_atom)
             {:field, _, [fn_atom | _ ]} -> to_string(fn_atom)
+            {:input_object, _, [fn_atom | _ ]} -> to_string(fn_atom)
+            {:object, _, [fn_atom | _ ]} -> to_string(fn_atom)
           end
 
         _, _ ->

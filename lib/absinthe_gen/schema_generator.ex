@@ -39,6 +39,7 @@ defmodule AbsintheGen.SchemaGenerator do
     extensions_module = Module.concat(Elixir, "#{module_name}.Extend")
     extensions_module_exists = Utils.does_module_exist(extensions_module)
 
+    # Build the type attributes/fields, ignoring fields with overrides
     attributes =
       built_attributes
       |> Utils.deduplicate_associations()
@@ -49,7 +50,7 @@ defmodule AbsintheGen.SchemaGenerator do
         unless extensions_module_exists &&
                  name in Utils.maybe_apply(
                    extensions_module,
-                   "#{singular_underscore_table_name}_overrides",
+                   "#{singular_underscore_table_name}_objects_overrides",
                    [],
                    []
                  ) do
@@ -57,13 +58,14 @@ defmodule AbsintheGen.SchemaGenerator do
         end
       end)
 
+    # Append extensions to the type attributes/fields
     attributes =
       (attributes ++
          if(extensions_module_exists,
            do:
              Utils.maybe_apply(
                extensions_module,
-               "#{singular_underscore_table_name}_extensions",
+               "#{singular_underscore_table_name}_objects_extensions",
                [],
                []
              ),
@@ -71,6 +73,7 @@ defmodule AbsintheGen.SchemaGenerator do
          ))
       |> Enum.join("\n")
 
+    # Build the computed fields for the object, excluding any overrides
     computed_fields =
       computed_fields
       |> Enum.map(&Builder.build/1)
@@ -78,7 +81,7 @@ defmodule AbsintheGen.SchemaGenerator do
         unless extensions_module_exists &&
                  name in Utils.maybe_apply(
                    extensions_module,
-                   "#{singular_underscore_table_name}_overrides",
+                   "#{singular_underscore_table_name}_objects_overrides",
                    [],
                    []
                  ) do
@@ -87,6 +90,7 @@ defmodule AbsintheGen.SchemaGenerator do
       end)
       |> Enum.join("\n")
 
+    # Build the refernece fields for the object
     references =
       case Map.get(table, :external_references) do
         nil ->
@@ -116,6 +120,7 @@ defmodule AbsintheGen.SchemaGenerator do
           |> Enum.join("\n")
       end
 
+    # build the conditions and filters
     conditions_and_filters = generate_condition_and_filter_input(table)
 
     order_by_enums =
@@ -123,9 +128,15 @@ defmodule AbsintheGen.SchemaGenerator do
         do: generate_order_by_enum(table.name, table.indexed_attrs),
         else: ""
 
+    # Get any extensions (these are not overrides, but just extensions to dump in the file)
+    additional_extensions =
+      Utils.maybe_apply(extensions_module, "extensions", [], [])
+      |> Enum.join("\n\n")
+
     fields = attributes <> "\n\n" <> computed_fields <> "\n\n" <> references
 
-    conditions_and_input_objects = conditions_and_filters <> "\n\n" <> order_by_enums
+    conditions_and_input_objects =
+      conditions_and_filters <> "\n\n" <> order_by_enums <> additional_extensions
 
     mutation_input_objects_and_payloads =
       generate_mutation_inputs_and_payloads(table, extensions_module, extensions_module_exists)
@@ -547,6 +558,17 @@ defmodule AbsintheGen.SchemaGenerator do
         extensions_module,
         extensions_module_exists
       ) do
+    IO.inspect(input_object_name, label: 'input_object_name')
+
+    IO.inspect(
+      Utils.maybe_apply(
+        extensions_module,
+        "#{input_object_name}_input_objects_overrides",
+        [],
+        []
+      )
+    )
+
     fields =
       attributes
       |> Enum.filter(fn %{insertable: insertable} -> insertable end)
@@ -554,7 +576,7 @@ defmodule AbsintheGen.SchemaGenerator do
         if extensions_module_exists &&
              name in Utils.maybe_apply(
                extensions_module,
-               "#{input_object_name}_overrides",
+               "#{input_object_name}_input_objects_overrides",
                [],
                []
              ) do
@@ -567,7 +589,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     field_strs =
       if extensions_module_exists do
-        fields ++ Utils.maybe_apply(extensions_module, "#{input_object_name}_extensions", [], [])
+        fields ++ Utils.maybe_apply(extensions_module, "#{input_object_name}_input_objects_extensions", [], [])
       else
         fields
       end
@@ -595,7 +617,7 @@ defmodule AbsintheGen.SchemaGenerator do
         if extensions_module_exists &&
              name in Utils.maybe_apply(
                extensions_module,
-               "#{input_object_name}_patch_overrides",
+               "#{input_object_name}_patch_input_objects_overrides",
                [],
                []
              ) do
@@ -609,7 +631,7 @@ defmodule AbsintheGen.SchemaGenerator do
     patch_field_strs =
       if extensions_module_exists do
         patch_fields ++
-          Utils.maybe_apply(extensions_module, "#{input_object_name}_patch_extensions", [], [])
+          Utils.maybe_apply(extensions_module, "#{input_object_name}_patch_input_objects_extensions", [], [])
       else
         patch_fields
       end
@@ -734,7 +756,7 @@ defmodule AbsintheGen.SchemaGenerator do
         resolve Connections.resolve_page_info()
       end
 
-      field :total_count, :integer do
+      field :total_count, non_null(:integer) do
         resolve(fn %{nodes: nodes}, _, _ -> {:ok, length(nodes)} end)
       end
     end
@@ -1086,12 +1108,12 @@ defmodule AbsintheGen.SchemaGenerator do
     functions =
       functions
       |> Enum.filter(fn %{name: name} ->
-          name not in Utils.maybe_apply(
-            module,
-            "query_extensions_overrides",
-            [],
-            []
-          )
+        name not in Utils.maybe_apply(
+          module,
+          "query_extensions_overrides",
+          [],
+          []
+        )
       end)
 
     query_defs = query_defs ++ db_function_queries(functions, tables)
@@ -1287,11 +1309,11 @@ defmodule AbsintheGen.SchemaGenerator do
 
       """
       object :#{name}_connection do
-        field :nodes, list_of(non_null(:#{name}))
+        field :nodes, non_null(list_of(non_null(:#{name})))
         field :page_info, non_null(:page_info) do
           resolve Connections.resolve_page_info()
         end
-        field :total_count, :integer do
+        field :total_count, non_null(:integer) do
           resolve(fn %{nodes: nodes}, _, _ -> {:ok, length(nodes)} end)
         end
       end
