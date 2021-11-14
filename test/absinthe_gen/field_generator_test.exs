@@ -33,7 +33,7 @@ defmodule AbsintheGen.FieldGeneratorTest do
   # for now i'm assuming that a list always has non-null objects...
   test "it references a non_null connection" do
     assert FieldGenerator.to_string({:has_many, "workflows", "Workflow", []}) ==
-             "field :workflows, non_null(:workflow_connection) do\n\nend"
+             "field :workflows, non_null(:workflows_connection) do\n\nend"
   end
 
   test "it takes a resolve method" do
@@ -42,7 +42,7 @@ defmodule AbsintheGen.FieldGeneratorTest do
               [is_not_null: true, resolve_method: {:dataloader, prefix: "Example"}]}
            ) ==
              """
-             field :workflows, non_null(:workflow_connection) do
+             field :workflows, non_null(:workflows_connection) do
                resolve Connections.resolve(Repo.Workflow, :workflows)
 
 
@@ -61,7 +61,7 @@ defmodule AbsintheGen.FieldGeneratorTest do
               ]}
            ) ==
              """
-             field :workflows, non_null(:workflow_connection) do
+             field :workflows, non_null(:workflows_connection) do
                description "Here we gooo"
 
                resolve Connections.resolve(Repo.Workflow, :workflows)

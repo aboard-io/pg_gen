@@ -57,7 +57,7 @@ defmodule AbsintheGen.FieldGenerator do
   end
 
   def to_string({:has_many, name, type, options} = field, table) do
-    type_str = "non_null(#{process_type(type, options)}_connection)"
+    type_str = "non_null(#{Inflex.pluralize(process_type(type, options))}_connection)"
     args_str = generate_args_for_object(table)
 
     "field :#{Inflex.pluralize(name)}, #{type_str} do"
@@ -67,7 +67,7 @@ defmodule AbsintheGen.FieldGenerator do
   end
 
   def to_string({:many_to_many, name, type, options} = field, table) do
-    type_str = "non_null(#{process_type(type, options)}_connection)"
+    type_str = "non_null(#{Inflex.pluralize(process_type(type, options))}_connection)"
     args_str = generate_args_for_object(table)
 
     "field :#{name}, #{type_str} do"
