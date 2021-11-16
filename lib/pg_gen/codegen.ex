@@ -190,7 +190,7 @@ defmodule PgGen.Codegen do
 
     resolver_path = PgGen.LocalConfig.get_graphql_resolver_path()
 
-    HotModule.load(AbsintheGen.SchemaGenerator.connections_resolver_template(web_module),
+    HotModule.load(AbsintheGen.SchemaGenerator.connections_resolver_template(app.camelized),
       file_path: "#{resolver_path}/connections.ex"
     )
     HotModule.load(AbsintheGen.ResolverGenerator.resolvers_utils_template(app.camelized),

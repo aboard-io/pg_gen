@@ -305,7 +305,7 @@ defmodule AbsintheGen.SchemaGenerator do
     end}
     #{if plural_underscore_table_name not in overrides do
       """
-      field :#{plural_underscore_table_name}, non_null(:#{singular_underscore_table_name}_connection) do
+      field :#{plural_underscore_table_name}, non_null(:#{plural_underscore_table_name}_connection) do
         #{args}
         resolve &Resolvers.#{singular_camelized_table_name}.#{plural_underscore_table_name}/3
       end
@@ -589,7 +589,13 @@ defmodule AbsintheGen.SchemaGenerator do
 
     field_strs =
       if extensions_module_exists do
-        fields ++ Utils.maybe_apply(extensions_module, "#{input_object_name}_input_objects_extensions", [], [])
+        fields ++
+          Utils.maybe_apply(
+            extensions_module,
+            "#{input_object_name}_input_objects_extensions",
+            [],
+            []
+          )
       else
         fields
       end
@@ -631,7 +637,12 @@ defmodule AbsintheGen.SchemaGenerator do
     patch_field_strs =
       if extensions_module_exists do
         patch_fields ++
-          Utils.maybe_apply(extensions_module, "#{input_object_name}_patch_input_objects_extensions", [], [])
+          Utils.maybe_apply(
+            extensions_module,
+            "#{input_object_name}_patch_input_objects_extensions",
+            [],
+            []
+          )
       else
         patch_fields
       end
@@ -745,11 +756,16 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_connection(table) do
-    %{singular_underscore_table_name: singular_underscore_table_name} =
-      Utils.get_table_names(table.name)
+    %{
+      singular_underscore_table_name: singular_underscore_table_name,
+      singular_camelized_table_name: singular_camelized_table_name,
+      plural_underscore_table_name: plural_underscore_table_name
+    } = Utils.get_table_names(table.name)
+
+    app = PgGen.LocalConfig.get_app_name()
 
     """
-    object :#{singular_underscore_table_name}_connection do
+    object :#{plural_underscore_table_name}_connection do
       field :nodes, non_null(list_of(non_null(:#{singular_underscore_table_name})))
 
       field :page_info, non_null(:page_info) do
@@ -757,17 +773,19 @@ defmodule AbsintheGen.SchemaGenerator do
       end
 
       field :total_count, non_null(:integer) do
-        resolve(fn %{nodes: nodes}, _, _ -> {:ok, length(nodes)} end)
+        resolve Connections.resolve_total_count(#{app}.Repo.#{singular_camelized_table_name})
       end
     end
     """
   end
 
-  def connections_resolver_template(module_name) do
+  def connections_resolver_template(app_name) do
     """
-    defmodule #{module_name}.Resolvers.Connections do
+    defmodule #{app_name}Web.Resolvers.Connections do
       import Absinthe.Resolution.Helpers, only: [on_load: 2]
-      alias #{module_name}.Resolvers.Utils
+      import Ecto.Query
+      alias #{app_name}Web.Resolvers.Utils
+      alias #{app_name}.Repo
 
       @doc \"\"\"
       Usage in an Absinthe schema:
@@ -779,7 +797,7 @@ defmodule AbsintheGen.SchemaGenerator do
       def resolve(repo, field_name) do
         fn parent, args, %{context: %{loader: loader}} = info ->
           computed_selections =
-            #{module_name}.Resolvers.Utils.get_computed_selections(info, repo)
+            Utils.get_computed_selections(info, repo)
 
           args =
             Map.put(args, :__selections, %{
@@ -842,23 +860,35 @@ defmodule AbsintheGen.SchemaGenerator do
               computed_selections: computed_selections
             })
 
-          loader
-          |> Dataloader.load(repo, {field_name, args}, parent)
-          |> on_load(fn loader_with_data ->
-            result =
-              Dataloader.get(
-                loader_with_data,
-                repo,
-                {field_name, args},
-                parent
-              )
-              |> Utils.cast_computed_selections(repo.computed_fields_with_types(computed_selections))
-
+          # If nodes are already loaded, return them. This will be rare,
+          # but is occasionally helpful. E.g., dataloader will spawn new
+          # connections to run queries in parallel, which can cause problems with
+          # RLS (queries for items not yet committed)
+          if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
+            result = parent
+            |> Map.get(field_name)
             {:ok, result}
-          end)
+
+          else
+            loader
+            |> Dataloader.load(repo, {field_name, args}, parent)
+            |> on_load(fn loader_with_data ->
+              result =
+                Dataloader.get(
+                  loader_with_data,
+                  repo,
+                  {field_name, args},
+                  parent
+                )
+                |> Utils.cast_computed_selections(
+                  repo.computed_fields_with_types(computed_selections)
+                )
+
+              {:ok, result}
+            end)
+          end
         end
       end
-
 
       @doc \"\"\"
       Usage in an Absinthe schema:
@@ -897,6 +927,26 @@ defmodule AbsintheGen.SchemaGenerator do
               has_previous_page: true
             }
           }
+        end
+      end
+
+      @doc \"\"\"
+      Usage in an Absinthe schema:
+
+      ```elixir
+      resolve Connections.resolve_total_count(Queryable)
+      ```
+      \"\"\"
+      def resolve_total_count(queryable) do
+        fn %{args: parent_args}, _, _ ->
+          args = parent_args
+                |> Map.delete(:first)
+                |> Map.delete(:last)
+          count = from(queryable)
+          |> Repo.Filter.apply(args)
+          |> Repo.aggregate(:count)
+
+          {:ok, count}
         end
       end
     end
@@ -1163,7 +1213,9 @@ defmodule AbsintheGen.SchemaGenerator do
           return_type: %{type: %{name: type_name}} = return_type,
           args: args,
           is_stable: is_stable,
-          is_strict: is_strict
+          is_strict: is_strict,
+          args_count: args_count,
+          args_with_default_count: args_with_default_count
         },
         tables
       ) do
@@ -1183,10 +1235,19 @@ defmodule AbsintheGen.SchemaGenerator do
         Macro.camelize(type_name) |> Inflex.singularize()
       end
 
-    input_object_or_args = generate_input_object_or_args(name, args, is_stable, is_strict, tables)
+    input_object_or_args =
+      generate_input_object_or_args(
+        name,
+        args,
+        is_stable,
+        is_strict,
+        tables,
+        args_count,
+        args_with_default_count
+      )
 
     {"""
-     field :#{name}, #{FieldGenerator.process_type(type_name, [])}_connection do
+     field :#{name}, #{Inflex.pluralize(FieldGenerator.process_type(type_name, []))}_connection do
       #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
        #{connection_arg_str}
        resolve &Resolvers.#{resolver_module_str}.#{name}/3
@@ -1200,7 +1261,9 @@ defmodule AbsintheGen.SchemaGenerator do
           return_type: %{type: %{name: type_name, category: category}},
           is_stable: is_stable,
           is_strict: is_strict,
-          args: args
+          args: args,
+          args_count: args_count,
+          args_with_default_count: args_with_default_count
         } = function,
         tables
       ) do
@@ -1215,7 +1278,15 @@ defmodule AbsintheGen.SchemaGenerator do
           else: ":mutate_#{Inflex.singularize(type_name)}_payload"
 
       input_object_or_args =
-        generate_input_object_or_args(name, args, is_stable, is_strict, tables)
+        generate_input_object_or_args(
+          name,
+          args,
+          is_stable,
+          is_strict,
+          tables,
+          args_count,
+          args_with_default_count
+        )
 
       function = """
       field :#{name}, #{return_type_str} do
@@ -1235,6 +1306,8 @@ defmodule AbsintheGen.SchemaGenerator do
           args: args,
           is_stable: is_stable,
           is_strict: is_strict,
+          args_count: args_count,
+          args_with_default_count: args_with_default_count,
           returns_set: returns_set
         },
         tables
@@ -1246,7 +1319,16 @@ defmodule AbsintheGen.SchemaGenerator do
         "#{FieldGenerator.process_type(type_name, [])}"
       end
 
-    input_object_or_args = generate_input_object_or_args(name, args, is_stable, is_strict, tables)
+    input_object_or_args =
+      generate_input_object_or_args(
+        name,
+        args,
+        is_stable,
+        is_strict,
+        tables,
+        args_count,
+        args_with_default_count
+      )
 
     {"""
      field :#{name}, #{return_type} do
@@ -1256,11 +1338,18 @@ defmodule AbsintheGen.SchemaGenerator do
      """, input_object_or_args}
   end
 
-  def generate_custom_function_args_str(args, tables, is_strict \\ false) do
+  def generate_custom_function_args_str(
+        args,
+        tables,
+        is_strict \\ false,
+        input_args_count,
+        arg_defaults_num
+      ) do
     table_names = Enum.map(tables, fn %{name: name} -> name end)
+    strict_args_count = input_args_count - arg_defaults_num
 
-    Enum.map(args, fn
-      %{name: name, type: type} ->
+    Enum.with_index(args, fn
+      %{name: name, type: type}, index ->
         normalized_name = String.replace(type.name, ~r/^[_]/, "")
 
         if normalized_name in table_names do
@@ -1268,7 +1357,7 @@ defmodule AbsintheGen.SchemaGenerator do
           arg :#{name}, #{process_type(Map.put(type, :name, "create_#{Inflex.singularize(normalized_name)}_input"))}
           """
         else
-          if is_strict do
+          if is_strict && index < strict_args_count do
             """
             arg :#{name}, non_null(#{process_type(type)})
             """
@@ -1307,14 +1396,22 @@ defmodule AbsintheGen.SchemaGenerator do
         end)
         |> Enum.join("\n")
 
+      %{
+        singular_underscore_table_name: singular_underscore_table_name,
+        singular_camelized_table_name: singular_camelized_table_name,
+        plural_underscore_table_name: plural_underscore_table_name
+      } = Utils.get_table_names(name)
+
+      app = PgGen.LocalConfig.get_app_name()
+
       """
-      object :#{name}_connection do
+      object :#{Inflex.pluralize(name)}_connection do
         field :nodes, non_null(list_of(non_null(:#{name})))
         field :page_info, non_null(:page_info) do
           resolve Connections.resolve_page_info()
         end
         field :total_count, non_null(:integer) do
-          resolve(fn %{nodes: nodes}, _, _ -> {:ok, length(nodes)} end)
+          resolve Connections.resolve_total_count(#{app}.Repo.#{singular_camelized_table_name})
         end
       end
 
@@ -1385,10 +1482,29 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_input_object_or_args(_, args, _, _, _) when length(args) == 0, do: ""
 
-  def generate_input_object_or_args(name, args, is_stable, is_strict, tables) do
-    arg_strs = generate_custom_function_args_str(args, tables, is_strict)
+  def generate_input_object_or_args(
+        name,
+        args,
+        is_stable,
+        is_strict,
+        tables,
+        args_count,
+        args_with_default_count
+      ) do
+    arg_strs =
+      generate_custom_function_args_str(
+        args,
+        tables,
+        is_strict,
+        args_count,
+        args_with_default_count
+      )
 
-    if !is_stable do
+    if name == "request_account_deletion" do
+      IO.inspect(arg_strs, label: "arg strs")
+    end
+
+    if !is_stable && length(args) > 0 do
       field_strs =
         arg_strs
         |> String.split("\n")
