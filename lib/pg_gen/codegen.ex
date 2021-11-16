@@ -13,7 +13,7 @@ defmodule PgGen.Codegen do
   end
 
   @impl true
-  def init(%{schema: schema}) do
+  def init(%{schema: schema, output_path: output_path}) do
     db_config = PgGen.LocalConfig.get_db()
     authenticator_db_config = PgGen.LocalConfig.get_authenticator_db() || db_config
     app_name = PgGen.LocalConfig.get_app_name()
@@ -26,6 +26,7 @@ defmodule PgGen.Codegen do
     {:ok,
      build(%{
        schema: schema,
+       output_path: output_path,
        db_config: db_config,
        authenticator_db_config: authenticator_db_config,
        app: app,
@@ -33,7 +34,13 @@ defmodule PgGen.Codegen do
      })}
   end
 
-  def build(%{authenticator_db_config: authenticator_db_config, schema: schema, app: app} = state) do
+  def build(
+        %{
+          authenticator_db_config: authenticator_db_config,
+          schema: schema,
+          app: app
+        } = state
+      ) do
     %{tables: tables, enum_types: enum_types, functions: functions} =
       Introspection.run(authenticator_db_config, String.split(schema, ","))
       |> Introspection.Model.from_introspection(schema)
@@ -66,7 +73,11 @@ defmodule PgGen.Codegen do
   end
 
   @impl true
-  def handle_call(:generate_ecto, _from, %{tables: tables, schema: schema, functions: functions, app: app} = state) do
+  def handle_call(
+        :generate_ecto,
+        _from,
+        %{tables: tables, schema: schema, functions: functions, app: app} = state
+      ) do
     ecto = Generator.generate_ecto(tables, functions, schema, app)
 
     {:reply, ecto, Map.put(state, :ecto, ecto)}
@@ -193,10 +204,10 @@ defmodule PgGen.Codegen do
     HotModule.load(AbsintheGen.SchemaGenerator.connections_resolver_template(app.camelized),
       file_path: "#{resolver_path}/connections.ex"
     )
+
     HotModule.load(AbsintheGen.ResolverGenerator.resolvers_utils_template(app.camelized),
       file_path: "#{resolver_path}/utils.ex"
     )
-
 
     resolvers
     |> Flow.from_enumerable()
@@ -210,6 +221,15 @@ defmodule PgGen.Codegen do
     HotModule.load(graphql_schema, file_path: "#{graphql_schema_path}/schema.ex")
     HotModule.recompile()
     Logger.debug("Done reloading code")
+
+    schema_module = Module.concat(Elixir, app.camelized <> "Web.Schema")
+    graphql_schema_file = Absinthe.Schema.to_sdl(schema_module)
+                          # Remove the first line of text, which breaks some
+                          # graphql parsers
+                          |> String.split("\n")
+                          |> tl()
+                          |> Enum.join("\n")
+    File.write!(state.output_path, graphql_schema_file)
 
     state
   end

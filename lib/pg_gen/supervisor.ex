@@ -12,13 +12,14 @@ defmodule PgGen.Supervisor do
   @impl true
   def init(opts) do
     schema = Keyword.get(opts, :schema, "app_public")
+    output_path = Keyword.get(opts, :output_path, "./schema.graphql")
 
     children = [
       # Starts a worker by calling: AppWithSup.Worker.start_link(arg)
       # {AppWithSup.Worker, arg}
       PgGen.CodeRegistry,
       PgGen.Notifications,
-      {PgGen.Codegen, %{schema: schema}},
+      {PgGen.Codegen, %{schema: schema, output_path: output_path}},
       PgGen.FileWatcher,
     ]
 
