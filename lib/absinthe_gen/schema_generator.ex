@@ -558,16 +558,6 @@ defmodule AbsintheGen.SchemaGenerator do
         extensions_module,
         extensions_module_exists
       ) do
-    IO.inspect(input_object_name, label: 'input_object_name')
-
-    IO.inspect(
-      Utils.maybe_apply(
-        extensions_module,
-        "#{input_object_name}_input_objects_overrides",
-        [],
-        []
-      )
-    )
 
     fields =
       attributes
@@ -1499,10 +1489,6 @@ defmodule AbsintheGen.SchemaGenerator do
         args_count,
         args_with_default_count
       )
-
-    if name == "request_account_deletion" do
-      IO.inspect(arg_strs, label: "arg strs")
-    end
 
     if !is_stable && length(args) > 0 do
       field_strs =

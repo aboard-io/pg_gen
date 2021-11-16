@@ -49,7 +49,7 @@ defmodule PgGen.Extend do
   def generate_code(name, contents) when is_atom(name), do: generate_code(to_string(name), contents)
   def generate_code(name, contents) do
     overrides_stringified = stringify_overrides(contents)
-                            |> IO.inspect
+
     stringified =
       contents
       |> Enum.filter(fn
@@ -57,7 +57,6 @@ defmodule PgGen.Extend do
         {_, _, _} -> true
       end)
       |> Enum.map(&Macro.to_string/1)
-      |> IO.inspect
 
     quote do
       def unquote(:"#{name}_extensions")() do

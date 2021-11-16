@@ -15,7 +15,6 @@ defmodule PgGen.Notifications do
     db_config =
       PgGen.LocalConfig.get_db()
       |> Enum.map(& &1)
-      |> IO.inspect()
 
     {:ok, pid} = Postgrex.Notifications.start_link(db_config)
     {:ok, ref} = Postgrex.Notifications.listen(pid, channel)
