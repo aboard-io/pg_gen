@@ -120,13 +120,14 @@ defmodule EctoGen.ContextGenerator do
     #{if get_name not in overrides do
       """
       def #{get_name}(id, computed_selections \\\\ []) do
-        from(#{table_name})
+        case from(#{table_name})
         |> with_computed_columns(computed_selections)
-        |> Repo.get!(id)
-        |> Utils.cast_computed_selection(
+        |> Repo.get(id) do
+          nil -> :error
+        result -> result |> Utils.cast_computed_selection(
             #{table_name}.computed_fields_with_types(computed_selections)
           )
-
+        end
       end
       """
     end}
@@ -144,7 +145,7 @@ defmodule EctoGen.ContextGenerator do
             #{table_name}.computed_fields_with_types(computed_selections)
           )
         )
-
+    
       end
       """
     end}
@@ -261,40 +262,73 @@ defmodule EctoGen.ContextGenerator do
           name: name,
           arg_names: arg_names,
           args: arg_types,
+          is_strict: is_strict,
+          args_count: args_count,
+          args_with_default_count: args_with_default_count,
           return_type: %{type: %{name: return_type_name}} = return_type,
           returns_set: returns_set
         } ->
-          simple_args_str =
-            arg_names
-            |> Enum.join(", ")
+          has_default_args = args_with_default_count > 0
 
-          args_str = generate_args_str(arg_types)
+          # if a function has default arguments, we need to generate pattern
+          # matches for empty arguments for all versions past the required
+          # fields. If there are no default args, we'll only generate one
+          # function/match
+          0..args_with_default_count
+          |> Enum.map(fn n ->
+            # this is the range that we want to slice from the args list. E.g.,
+            # if this is the first pass with a default arg, we want to build
+            # the function  using all the args except for the last one. We pad
+            # the function call with the :empty atom
+            range_for_args = 0..(length(arg_names) - 1 - n)
 
-          numbered_args =
-            arg_names
-            |> Enum.with_index(1)
-            |> Enum.map(fn {_, index} -> "$#{index}" end)
-            |> Enum.join(", ")
+            simple_args_str =
+              arg_names
+              |> Enum.slice(range_for_args)
+              |> Enum.join(", ")
 
-          is_void_type = return_type_name == "void"
+            simple_args_str =
+              if n > 0 do
+                empties = "#{0..n |> Enum.map(fn _ -> ', :empty' end) |> tl |> Enum.join(" ")}"
+                simple_args_str <> empties
+              else
+                simple_args_str
+              end
 
-          return_match =
-            cond do
-              returns_set -> "result"
-              is_void_type -> "[[_result]]"
-              true -> "[[result]]"
+            args_str = generate_args_str(Enum.slice(arg_types, range_for_args))
+
+            numbered_args =
+              arg_names
+              |> Enum.slice(range_for_args)
+              |> Enum.with_index(1)
+              |> Enum.map(fn {_, index} -> "$#{index}" end)
+              |> Enum.join(", ")
+
+            is_void_type = return_type_name == "void"
+
+            return_match =
+              cond do
+                returns_set -> "result"
+                is_void_type -> "[[_result]]"
+                true -> "[[result]]"
+              end
+
+            result_str =
+              get_result_str(return_type, returns_set, Enum.slice(arg_names, range_for_args))
+
+            """
+
+            def #{name}(#{simple_args_str}) do
+              case Repo.query("select #{schema}.#{name}(#{numbered_args})", [#{args_str}]) do
+                {:ok, %Postgrex.Result{ rows: #{return_match}}} ->
+                  #{result_str}
+                _ -> {:error, "Query failed"}
+              end
             end
-
-          result_str = get_result_str(return_type, returns_set)
-
-          """
-
-          def #{name}(#{simple_args_str}) do
-            {:ok, %Postgrex.Result{ rows: #{return_match}}} =
-              Repo.query("select #{schema}.#{name}(#{numbered_args})", [#{args_str}])
-            #{result_str}
-          end
-          """
+            """
+          end)
+          |> Enum.reverse()
+          |> Enum.join("\n\n")
       end)
 
     """
@@ -415,7 +449,7 @@ defmodule EctoGen.ContextGenerator do
 
     cast_values = "#{names.singular_camelized_table_name}.to_pg_row(#{List.first(arg_names)})"
 
-    result_str = get_result_str(return_type, returns_set)
+    result_str = get_result_str(return_type, returns_set, arg_names)
 
     return_match =
       cond do
@@ -425,16 +459,17 @@ defmodule EctoGen.ContextGenerator do
 
     """
     def #{simplified_name}(#{arg_strs}) do
-        {:ok, %Postgrex.Result{ rows: #{return_match}}} =
-          Repo.query(
+        case Repo.query(
         \"\"\"
         select #{schema}.#{name}($1)
         \"\"\",
         [
           #{cast_values}
         ]
-      )
-      #{result_str}
+      ) do
+        {:ok, %Postgrex.Result{ rows: #{return_match}}} -> #{result_str}
+        _ -> {:error, "Query failed"}
+      end
     end
     """
   end
@@ -468,7 +503,7 @@ defmodule EctoGen.ContextGenerator do
     |> Enum.join(", ")
   end
 
-  defp get_result_str(return_type, returns_set) do
+  defp get_result_str(return_type, returns_set, arg_names) do
     is_void_type = return_type.type.name == "void"
     is_enum_type = return_type.type.category == "E"
 
@@ -505,7 +540,12 @@ defmodule EctoGen.ContextGenerator do
         "String.to_existing_atom(result)"
 
       is_void_type ->
-        "\"success\""
+        if length(arg_names) == 0 do
+          "%{ success: true }"
+        else
+          arg_result = arg_names |> Enum.map(fn name -> "#{name}: #{name}" end) |> Enum.join(", ")
+          "%{ success: true, #{arg_result} }"
+        end
 
       true ->
         "result"

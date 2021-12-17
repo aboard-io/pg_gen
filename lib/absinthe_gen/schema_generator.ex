@@ -254,6 +254,10 @@ defmodule AbsintheGen.SchemaGenerator do
         field :has_previous_page, non_null(:boolean)
       end
 
+      object :success_object do
+        field :success, non_null(:boolean)
+      end
+
       #{custom_record_defs}
 
       query do
@@ -558,7 +562,6 @@ defmodule AbsintheGen.SchemaGenerator do
         extensions_module,
         extensions_module_exists
       ) do
-
     fields =
       attributes
       |> Enum.filter(fn %{insertable: insertable} -> insertable end)
@@ -650,8 +653,13 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_custom_function_mutations(mutation_functions, tables) do
+    module_name = PgGen.LocalConfig.get_app_name() <> "Web.Schema.Extends"
+    extensions_module = Module.concat(Elixir, module_name)
+    overrides = Utils.maybe_apply(extensions_module, :mutations_overrides, [], [])
+
     {functions, input_objects} =
       mutation_functions
+      |> Enum.filter(fn %{name: name} -> name not in overrides end)
       |> Enum.map(&generate_custom_function_query(&1, tables))
       |> sort_functions_and_inputs()
 
@@ -843,7 +851,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
       def resolve_one(repo, field_name) do
         fn parent, args, %{context: %{loader: loader}} = info ->
-          computed_selections = ExampleWeb.Resolvers.Utils.get_computed_selections(info, repo)
+          computed_selections = Utils.get_computed_selections(info, repo)
 
           args =
             Map.put(args, :__selections, %{

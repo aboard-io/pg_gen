@@ -168,7 +168,7 @@ defmodule PgGen.Codegen do
     |> Enum.to_list()
 
     graphql_schema_path = PgGen.LocalConfig.get_graphql_schema_path()
-    types_path = graphql_schema_path <> "/types"
+    types_path = PgGen.LocalConfig.get_graphql_types_path()
 
     web_module = "#{app.camelized}Web"
 
@@ -223,13 +223,18 @@ defmodule PgGen.Codegen do
     Logger.debug("Done reloading code")
 
     schema_module = Module.concat(Elixir, app.camelized <> "Web.Schema")
-    graphql_schema_file = Absinthe.Schema.to_sdl(schema_module)
-                          # Remove the first line of text, which breaks some
-                          # graphql parsers
-                          |> String.split("\n")
-                          |> tl()
-                          |> Enum.join("\n")
-    File.write!(state.output_path, graphql_schema_file)
+
+    graphql_schema_file =
+      Absinthe.Schema.to_sdl(schema_module)
+      # Remove the first line of text, which breaks some
+      # graphql parsers
+      |> String.split("\n")
+      |> tl()
+      |> Enum.join("\n")
+
+    if PgGen.CodeRegistry.is_stale(state.output_path, graphql_schema_file) do
+      File.write!(state.output_path, graphql_schema_file)
+    end
 
     state
   end

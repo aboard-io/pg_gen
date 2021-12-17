@@ -58,12 +58,12 @@ defmodule PgGen.LocalConfig do
 
   def get_contexts_path do
     fragment = get_app_name() |> Macro.underscore()
-    "lib/#{fragment}/contexts"
+    "lib/#{fragment}/contexts/generated"
   end
 
   def get_repo_path do
     fragment = get_app_name() |> Macro.underscore()
-    "lib/#{fragment}/repo"
+    "lib/#{fragment}/repo/generated"
   end
 
   def get_graphql_schema_path do
@@ -71,7 +71,11 @@ defmodule PgGen.LocalConfig do
     "lib/#{fragment}_web/schema"
   end
 
+  def get_graphql_types_path do
+    "#{get_graphql_schema_path()}/types/generated"
+  end
+
   def get_graphql_resolver_path do
-    "#{get_graphql_schema_path()}/resolvers"
+    "#{get_graphql_schema_path()}/resolvers/generated"
   end
 end

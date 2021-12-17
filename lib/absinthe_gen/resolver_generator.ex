@@ -74,7 +74,10 @@ defmodule AbsintheGen.ResolverGenerator do
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
       
-            {:ok, #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections)}
+            case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections) do
+              :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
+              result -> {:ok, result}
+            end
           end
           """
         else
@@ -256,21 +259,30 @@ defmodule AbsintheGen.ResolverGenerator do
         %{return_type: %{composite_type: true}} -> true
         _ -> false
       end)
-      |> Enum.map(fn %{name: name, arg_names: arg_names, is_stable: is_stable} ->
-        arg_names_str = Enum.join(arg_names, ", ")
-
+      |> Enum.map(fn %{
+                       name: name,
+                       arg_names: arg_names,
+                       is_stable: is_stable,
+                       is_strict: is_strict,
+                       args_count: args_count,
+                       args_with_default_count: args_with_default_count
+                     } ->
         has_args = length(arg_names) > 0
+        arg_var = if is_stable, do: "args", else: "args.input"
+
+        arg_names_str =
+          arg_names
+          |> Enum.map(fn name ->
+            "Map.get(#{arg_var}, :#{name}, :empty)"
+          end)
+          |> Enum.join(", ")
 
         """
         def #{name}(_, #{if has_args, do: "args", else: "_"}, _) do
-          #{if has_args do
-          """
-          %{
-            #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-            } = #{if is_stable, do: "args", else: "args.input"}
-          """
-        end}
-          {:ok, #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str})}
+          case #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str}) do
+            {:error, "Query failed"} -> {:error, "Something went wrong"}
+            result -> {:ok, result}
+          end
         end
         """
       end)

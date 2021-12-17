@@ -15,7 +15,7 @@ defmodule PgGen.FileWatcher do
   end
 
   def get_paths(app_name \\ nil) do
-    module_name = app_name || LocalConfig.get_app_name()
+    module_name = app_name || LocalConfig.get_app_name() |> Macro.underscore()
     module_name_web = module_name <> "_web"
 
     %{
