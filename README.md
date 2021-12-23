@@ -220,6 +220,54 @@ In `endpoint.ex`, to set up subscriptions:
 The code is not always pretty. I've been spelunking a lot, but it's been pretty
 interesting and fun. Please feel free to play around, submit PRs, etc.
 
+## Configure Ecto
+
+If you're using row-level security to secure data access, you have to disable
+parallel execution in Ecto. Leaving it on will mean certain queries will happen
+outside the transaction that enforces RLS.
+
+```elixir
+defmodule Example.Repo do
+  use Ecto.Repo,
+    otp_app: :example,
+    adapter: Ecto.Adapters.Postgres,
+    # setting in_parallel to false keeps all queries inside the same
+    # transaction, which is required for RLS. From the ecto docs:
+    #
+    # :in_parallel - If the preloads must be done in parallel. It can only be
+    # performed when we have more than one preload and the repository is not in
+    # a transaction. Defaults to true. Setting to false ensures subqueries and
+    # dataloader preloads stay inside the same transaction.
+    # https://hexdocs.pm/ecto/Ecto.Repo.html#c:preload/3-options
+    in_parallel: false
+      alias Ecto.Adapters.SQL
+
+  @doc """
+  A function to wrap Ecto queries in transactions to work with Postgres
+  row-level security. Requires a session_id
+  """
+  def as_user(session_id, txn)
+      when is_binary(session_id) and is_function(txn) do
+    transaction(fn ->
+      SQL.query(
+        Example.Repo,
+        """
+        SELECT
+          set_config('role', 'authenticated_user', true),
+          set_config('jwt.claims.session_id', $1, true)
+        """,
+        [
+          session_id
+        ]
+      )
+
+      txn.()
+    end)
+  end
+  # ...
+end
+```
+
 ## Things currently on my to-do list:
 
 - [x] Mutations for the Absinthe schema. Currently only supports read.
