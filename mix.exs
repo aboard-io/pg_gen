@@ -33,7 +33,6 @@ defmodule PgGen.MixProject do
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
       # deps used by the generated code
-      {:dataloader, "~> 1.0.0"},
       {:base62_uuid, "~> 2.0.0", github: "adampash/base62_uuid"},
       {:absinthe_error_payload, "~> 1.1"}
     ]

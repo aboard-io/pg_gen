@@ -79,9 +79,12 @@ defmodule EctoGen.ContextGenerator do
         """
         # dataloader
         def data() do
-          Dataloader.Ecto.new(#{app_name}.Repo, query: &query/2)
+          Dataloader.Ecto.new(#{app_name}.Repo, query: &query/2,
+            async: false,
+            repo_opts: [in_parallel: false]
+          )
         end
-      
+
         def query(
               queryable,
               %{
