@@ -429,8 +429,13 @@ defmodule EctoGen.ContextGenerator do
 
     """
     def #{name}(#{simple_args_str}) do
-      result = Repo.query!("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}])
-      Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first()
+      case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+        {:ok, result} ->
+          Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first()
+
+        {:error, reason} ->
+          {:error, reason.postgres}
+      end
     end
     """
   end

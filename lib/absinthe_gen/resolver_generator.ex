@@ -245,7 +245,7 @@ defmodule AbsintheGen.ResolverGenerator do
         } = #{if is_stable, do: "args", else: "args.input"}
       """
     end}
-      {:ok, #{return_value}}
+      #{return_value}
     end
     """
   end
@@ -364,14 +364,26 @@ defmodule AbsintheGen.ResolverGenerator do
 
     if is_stable do
       """
-        #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"})
+      case #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"}) do
+        {:error, reason} -> {:error, reason}
+        result -> {:ok, result}
+      end
       """
     else
       """
-      %{
-        #{return_type_str}: #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"}),
-        query: parent
-      }
+      case #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"}) do
+        {:error, reason} ->
+          {:error, reason}
+
+        result ->
+          {:ok,
+            %{
+              #{return_type_str}: result,
+              query: parent
+            }
+          }
+      end
+
       """
     end
   end
