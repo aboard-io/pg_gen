@@ -1,6 +1,6 @@
 defmodule PgGen.Repo do
   # Currently only supporting field overrides, not relationships like belongs_to, etc
-  defmacro schema(name, do: contents) do
+  defmacro schema(_name, do: contents) do
     {:__block__, [], contents} = contents
 
     overrides_stringified = PgGen.Extend.stringify_overrides(contents)

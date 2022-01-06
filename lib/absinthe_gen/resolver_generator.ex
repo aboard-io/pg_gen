@@ -263,9 +263,6 @@ defmodule AbsintheGen.ResolverGenerator do
                        name: name,
                        arg_names: arg_names,
                        is_stable: is_stable,
-                       is_strict: is_strict,
-                       args_count: args_count,
-                       args_with_default_count: args_with_default_count
                      } ->
         has_args = length(arg_names) > 0
         arg_var = if is_stable, do: "args", else: "args.input"

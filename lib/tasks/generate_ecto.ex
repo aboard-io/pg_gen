@@ -1,73 +1,75 @@
 defmodule Mix.Tasks.PgGen.GenerateEcto do
   use Mix.Task
-  alias EctoGen.{TableGenerator, ContextGenerator}
-  alias PgGen.Utils
+  # alias EctoGen.{TableGenerator, ContextGenerator}
+  # alias PgGen.Utils
+  require Logger
 
   @doc """
   Generate Ecto schemas
   """
-  def run(args) do
-    {options, _, _} =
-      OptionParser.parse(args,
-        strict: [schema: :string, database: :string],
-        aliases: [d: :database, s: :schema]
-      )
-
-    defaults = PgGen.LocalConfig.get_db()
-
-    Mix.Task.run("app.start")
-
-    database_config =
-      case options[:database] do
-        nil ->
-          defaults
-
-        database ->
-          Map.put(defaults, :database, database)
-      end
-
-    schema = options[:schema] || "public"
-    IO.puts("TODO: Check if schema exists with Introspection.run_query")
-
-    file_path = PgGen.LocalConfig.get_repo_path()
-
-    if !File.exists?(file_path) do
-      File.mkdir!(file_path)
-    end
-
-    %{tables: tables} =
-      Introspection.run(database_config, String.split(schema, ","))
-      |> Introspection.Model.from_introspection(schema)
-
-    tables
-    |> Enum.filter(fn table -> table["classKind"] != "c" end)
-    |> Enum.map(fn table -> TableGenerator.generate(table, schema) end)
-    |> Enum.map(fn {name, file} -> File.write!("#{file_path}/#{name}.ex", file) end)
-
-    # Generate the contexts access functions
-    contexts_file_path = PgGen.LocalConfig.get_contexts_path()
-
-    if !File.exists?(contexts_file_path) do
-      File.mkdir!(contexts_file_path)
-    end
-
-    module_name = PgGen.LocalConfig.get_app_name()
-
-    tables
-    |> Enum.map(fn table -> ContextGenerator.generate(table, module_name) end)
-    |> Enum.map(fn {name, file} -> File.write!("#{contexts_file_path}/#{name}.ex", file) end)
-
-    ecto_json_type_path = "#{file_path}/ecto_json.ex"
-
-    if !File.exists?(ecto_json_type_path) do
-      File.write!(ecto_json_type_path, TableGenerator.ecto_json_type())
-    end
-
-    filter_path = "#{contexts_file_path}/filter.ex"
-
-    if !File.exists?(filter_path) do
-      File.write!(filter_path, TableGenerator.dynamic_query_template(Macro.camelize(module_name)))
-    end
+  def run(_args) do
+    Logger.warn("Currently not up to date; noop")
+    # {options, _, _} =
+    #   OptionParser.parse(args,
+    #     strict: [schema: :string, database: :string],
+    #     aliases: [d: :database, s: :schema]
+    #   )
+    #
+    # defaults = PgGen.LocalConfig.get_db()
+    #
+    # Mix.Task.run("app.start")
+    #
+    # database_config =
+    #   case options[:database] do
+    #     nil ->
+    #       defaults
+    #
+    #     database ->
+    #       Map.put(defaults, :database, database)
+    #   end
+    #
+    # schema = options[:schema] || "public"
+    # IO.puts("TODO: Check if schema exists with Introspection.run_query")
+    #
+    # file_path = PgGen.LocalConfig.get_repo_path()
+    #
+    # if !File.exists?(file_path) do
+    #   File.mkdir!(file_path)
+    # end
+    #
+    # %{tables: tables} =
+    #   Introspection.run(database_config, String.split(schema, ","))
+    #   |> Introspection.Model.from_introspection(schema)
+    #
+    # tables
+    # |> Enum.filter(fn table -> table["classKind"] != "c" end)
+    # |> Enum.map(fn table -> TableGenerator.generate(table, schema) end)
+    # |> Enum.map(fn {name, file} -> File.write!("#{file_path}/#{name}.ex", file) end)
+    #
+    # # Generate the contexts access functions
+    # contexts_file_path = PgGen.LocalConfig.get_contexts_path()
+    #
+    # if !File.exists?(contexts_file_path) do
+    #   File.mkdir!(contexts_file_path)
+    # end
+    #
+    # module_name = PgGen.LocalConfig.get_app_name()
+    #
+    # tables
+    # |> Enum.map(fn table -> ContextGenerator.generate(table, module_name) end)
+    # |> Enum.map(fn {name, file} -> File.write!("#{contexts_file_path}/#{name}.ex", file) end)
+    #
+    # ecto_json_type_path = "#{file_path}/ecto_json.ex"
+    #
+    # if !File.exists?(ecto_json_type_path) do
+    #   File.write!(ecto_json_type_path, TableGenerator.ecto_json_type())
+    # end
+    #
+    # filter_path = "#{contexts_file_path}/filter.ex"
+    #
+    # if !File.exists?(filter_path) do
+    #   File.write!(filter_path, TableGenerator.dynamic_query_template(Macro.camelize(module_name)))
+    # end
   end
 
   def usage do

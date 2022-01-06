@@ -235,14 +235,10 @@ defmodule EctoGen.ContextGenerator do
           name: name,
           arg_names: arg_names,
           args: arg_types,
-          is_strict: is_strict,
-          args_count: args_count,
           args_with_default_count: args_with_default_count,
           return_type: %{type: %{name: return_type_name}} = return_type,
           returns_set: returns_set
         } ->
-          has_default_args = args_with_default_count > 0
-
           # if a function has default arguments, we need to generate pattern
           # matches for empty arguments for all versions past the required
           # fields. If there are no default args, we'll only generate one
