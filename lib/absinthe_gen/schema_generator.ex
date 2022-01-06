@@ -734,7 +734,7 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.map(fn %{name: name} ->
         singular_camelized_table = name |> Inflex.singularize() |> Macro.camelize()
 
-        "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Contexts.#{singular_camelized_table}.data())"
+        "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Connections.data(Contexts.#{singular_camelized_table}))"
       end)
       |> Enum.join("\n")
 
@@ -771,7 +771,7 @@ defmodule AbsintheGen.SchemaGenerator do
       end
 
       field :total_count, non_null(:integer) do
-        resolve Connections.resolve_total_count(#{app}.Repo.#{singular_camelized_table_name})
+        resolve Connections.resolve_count(#{app}.Repo.#{singular_camelized_table_name}, :#{plural_underscore_table_name})
       end
     end
     """
@@ -786,6 +786,55 @@ defmodule AbsintheGen.SchemaGenerator do
       alias #{app_name}.Repo
 
       @doc \"\"\"
+      This function sets up the dataloader source.
+      \"\"\"
+      def data(context_module) do
+        query_fun = query(context_module)
+
+        Dataloader.Ecto.new(#{app_name}.Repo,
+          query: query_fun,
+          async: false,
+          repo_opts: [in_parallel: false]
+        )
+      end
+
+      @doc \"\"\"
+      This function sets up the query function dataloader uses to resolve queries.
+      It's shared by everyone.
+      \"\"\"
+      def query(context_module) do
+        fn
+          queryable,
+          %{
+            total_count: true
+          } = args ->
+            args =
+              args
+              |> Map.delete(:first)
+              |> Map.delete(:last)
+
+            from(queryable)
+            |> Repo.Filter.apply(args)
+            |> select([_], count())
+            |> group_by([q], [q.id])
+
+          queryable,
+          %{
+            __selections: %{
+              computed_selections: computed_selections
+            }
+          } = args ->
+            queryable
+            |> Repo.Filter.apply(args)
+            |> context_module.with_computed_columns(computed_selections)
+
+          queryable, args ->
+            queryable
+            |> Repo.Filter.apply(args)
+        end
+      end
+
+      @doc \"\"\"
       Usage in an Absinthe schema:
 
       ```elixir
@@ -793,46 +842,55 @@ defmodule AbsintheGen.SchemaGenerator do
       ```
       \"\"\"
       def resolve(repo, field_name) do
-        fn parent, args, %{context: %{loader: loader}} = info ->
-          computed_selections =
-            Utils.get_computed_selections(info, repo)
+        fn
+          # when it's just a passthrough of already-resolved nodes; this happens
+          # when it's a top-level query being resolved.
+          %{nodes: nodes, parent: nil}, args, _ ->
+            return_nodes(nodes, nil, args)
 
-          args =
-            Map.put(args, :__selections, %{
-              computed_selections: computed_selections
-            })
+          # this is the default case for associations. it resolves at the top level, 
+          # then passes down the nodes, parent, and args to the children so they
+          # can handle nodes, page_info, and total_count
+          parent, args, %{context: %{loader: loader}} = info ->
 
-          # If nodes are already loaded, return them. This will be rare,
-          # but is occasionally helpful. E.g., dataloader will spawn new
-          # connections to run queries in parallel, which can cause problems with
-          # RLS (queries for items not yet committed)
-          if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
-            parent
-            |> Map.get(field_name)
-            |> return_nodes(args)
-          else
-            loader
-            |> Dataloader.load(repo, {field_name, args}, parent)
-            |> on_load(fn loader_with_data ->
-              Dataloader.get(
-                loader_with_data,
-                repo,
-                {field_name, args},
-                parent
-              )
-              |> Enum.map(
-                &Utils.cast_computed_selections(
-                  &1,
-                  repo.computed_fields_with_types(computed_selections)
+            computed_selections = Utils.get_computed_selections(info, repo)
+
+            args =
+              Map.put(args, :__selections, %{
+                computed_selections: computed_selections
+              })
+
+            # If nodes are already loaded, return them. This will be rare,
+            # but is occasionally helpful. E.g., dataloader will spawn new
+            # connections to run queries in parallel, which can cause problems with
+            # RLS (queries for items not yet committed)
+            if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
+              parent
+              |> Map.get(field_name)
+              |> return_nodes(parent, args)
+            else
+              loader
+              |> Dataloader.load(repo, {field_name, args}, parent)
+              |> on_load(fn loader_with_data ->
+                Dataloader.get(
+                  loader_with_data,
+                  repo,
+                  {field_name, args},
+                  parent
                 )
-              )
-              |> return_nodes(args)
-            end)
-          end
+                |> Enum.map(
+                  &Utils.cast_computed_selections(
+                    &1,
+                    repo.computed_fields_with_types(computed_selections)
+                  )
+                )
+                |> return_nodes(parent, args)
+              end)
+            end
         end
       end
 
-      defp return_nodes(nodes, args) do
+      defp return_nodes(nodes, parent, args) do
         # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
         # to make the query work with  alimit.
         # Here we put the records back in the expected order
@@ -845,8 +903,7 @@ defmodule AbsintheGen.SchemaGenerator do
               if is_integer(Map.get(args, :first)), do: nodes, else: Enum.reverse(nodes)
           end
 
-        # passing args to children so we can use order_by to generate cursors
-        {:ok, %{nodes: nodes, args: args}}
+        {:ok, %{nodes: nodes, parent: parent, args: args}}
       end
 
       def resolve_one(repo, field_name) do
@@ -928,23 +985,45 @@ defmodule AbsintheGen.SchemaGenerator do
         end
       end
 
-      @doc \"\"\"
-      Usage in an Absinthe schema:
+      def resolve_count(repo, field_name) do
+        fn
+          # if there is no parent (it's a root-level query), we can do the aggregate
+          # w/out dataloader
+          %{parent: nil}, args, _ ->
+            args =
+              args
+              |> Map.delete(:first)
+              |> Map.delete(:last)
 
-      ```elixir
-      resolve Connections.resolve_total_count(Queryable)
-      ```
-      \"\"\"
-      def resolve_total_count(queryable) do
-        fn %{args: parent_args}, _, _ ->
-          args = parent_args
-                |> Map.delete(:first)
-                |> Map.delete(:last)
-          count = from(queryable)
-          |> Repo.Filter.apply(args)
-          |> Repo.aggregate(:count)
+            count =
+              from(repo)
+              |> Repo.Filter.apply(args)
+              |> Repo.aggregate(:count)
 
-          {:ok, count}
+            {:ok, count}
+
+          %{parent: parent, args: args}, _args, %{context: %{loader: loader}} ->
+            # computed_selections = Utils.get_computed_selections(info, repo)
+            args = Map.put(args, :total_count, true)
+
+            loader
+            |> Dataloader.load(repo, {field_name, args}, parent)
+            |> on_load(fn loader_with_data ->
+              result =
+                Dataloader.get(
+                  loader_with_data,
+                  repo,
+                  {field_name, args},
+                  parent
+                )
+
+              # FIXME This works _okay_; just returns arrays of 1s, which we can
+              # get the length of later. In a perfect world, it would just return
+              # the number, but I'm punting on this b/c I don't want to spend more
+              # time fighting w/ecto on this one. I know how the sql should look,
+              # but am struggling with the ecto.
+              {:ok, length(result)}
+            end)
         end
       end
     end
@@ -1395,7 +1474,6 @@ defmodule AbsintheGen.SchemaGenerator do
         |> Enum.join("\n")
 
       %{
-        singular_underscore_table_name: singular_underscore_table_name,
         singular_camelized_table_name: singular_camelized_table_name,
         plural_underscore_table_name: plural_underscore_table_name
       } = Utils.get_table_names(name)
@@ -1409,7 +1487,7 @@ defmodule AbsintheGen.SchemaGenerator do
           resolve Connections.resolve_page_info()
         end
         field :total_count, non_null(:integer) do
-          resolve Connections.resolve_total_count(#{app}.Repo.#{singular_camelized_table_name})
+          resolve Connections.resolve_count(#{app}.Repo.#{singular_camelized_table_name}, :#{plural_underscore_table_name})
         end
       end
 

@@ -66,6 +66,7 @@ defmodule EctoGen.ContextGenerator do
 
        alias #{app_module_name}.Repo.#{table_name}
        #{if table.selectable, do: "alias #{app_module_name}Web.Resolvers.Utils"}
+       #{if table.selectable, do: "alias #{app_module_name}Web.Resolvers.Connections"}
 
          #{generate_selectable(table, functions.computed_columns_by_table[name], overrides, schema)}
          #{generate_insertable(table, overrides)}
@@ -75,36 +76,6 @@ defmodule EctoGen.ContextGenerator do
          #{computed_columns}
          #{Enum.join(extensions, "\n\n")}
 
-        #{if table.selectable do
-        """
-        # dataloader
-        def data() do
-          Dataloader.Ecto.new(#{app_name}.Repo, query: &query/2,
-            async: false,
-            repo_opts: [in_parallel: false]
-          )
-        end
-
-        def query(
-              queryable,
-              %{
-                __selections: %{
-                  computed_selections: computed_selections
-                }
-              } = args
-            ) do
-          queryable
-          |> Repo.Filter.apply(args)
-          |> with_computed_columns(computed_selections)
-        end
-        def query(queryable, args) do
-          queryable
-          |> Repo.Filter.apply(args)
-        end
-        """
-      else
-        ""
-      end}
       end
       """
 
@@ -139,8 +110,7 @@ defmodule EctoGen.ContextGenerator do
       """
       def list_#{Inflex.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
         from(#{table_name})
-        |> Repo.Filter.apply(args)
-        |> with_computed_columns(computed_selections)
+        |> Connections.query(__MODULE__).(args)
         |> Repo.all()
         |> Enum.map(
           &Utils.cast_computed_selections(

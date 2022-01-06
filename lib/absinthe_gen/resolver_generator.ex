@@ -96,7 +96,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
       
-            {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), args: args }}
+            {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), args: args, parent: nil }}
           end
           """
         else
