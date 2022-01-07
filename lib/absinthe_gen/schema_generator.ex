@@ -1002,7 +1002,7 @@ defmodule AbsintheGen.SchemaGenerator do
         fn
           # if there is no parent (it's a root-level query), we can do the aggregate
           # w/out dataloader
-          %{parent: nil}, args, _ ->
+          %{parent: nil, args: args}, _, _ ->
             args =
               args
               |> Map.delete(:first)

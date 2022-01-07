@@ -96,8 +96,10 @@ defmodule AbsintheGen.ResolverGenerator do
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
 
+            nodes = if Resolvers.Utils.has_nodes?(info), do: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), else: []
+
             Resolvers.Connections.return_nodes(
-              #{singular_camelized_table_name}.list_#{name}(args, computed_selections),
+              nodes,
               nil,
               args
             )
@@ -355,6 +357,19 @@ defmodule AbsintheGen.ResolverGenerator do
       # If it's not a tuple, we can leave it as is
       def cast_computed_selection(result, _), do: result
 
+      @doc \"\"\"
+      Checks if a field has child nodes. This is convenient to determine whether or
+      not to make the extra query. If the field has no child nodes — for example,
+      if the query is only requesting total_count — we can skip the extra query.
+      \"\"\"
+      def has_nodes?(info) do
+        project = Absinthe.Resolution.project(info)
+
+        case Enum.filter(project, &(&1.name == "nodes")) do
+          [] -> false
+          [nodes] -> true
+        end
+      end
     end
     """
   end
