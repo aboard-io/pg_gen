@@ -890,20 +890,36 @@ defmodule AbsintheGen.SchemaGenerator do
         end
       end
 
-      defp return_nodes(nodes, parent, args) do
+      def return_nodes(total_nodes, parent, args) do
+        first = Map.get(args, :first)
+        last = Map.get(args, :last)
+        has_first_or_last = (first || last) |> is_nil() |> Kernel.not()
+
+        # if the user is paginating, we're requesting 1 extra record in
+        # filter.ex so that we can easily tell if there are more records for
+        # page_info. Here, we'll slice off the last record so the user gets the
+        # expected number of records.
+        nodes = if has_first_or_last, do: Enum.slice(total_nodes, 0..-2), else: total_nodes
+
         # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
-        # to make the query work with  alimit.
+        # to make the query work with a limit.
         # Here we put the records back in the expected order
         nodes =
-          case is_integer(Map.get(args, :last)) do
+          case is_integer(last) do
             false ->
               nodes
 
             true ->
-              if is_integer(Map.get(args, :first)), do: nodes, else: Enum.reverse(nodes)
+              if is_integer(first), do: nodes, else: Enum.reverse(nodes)
           end
 
-        {:ok, %{nodes: nodes, parent: parent, args: args}}
+        total_node_length = length(total_nodes)
+        before_is_set = Map.get(args, :before) |> is_nil() |> Kernel.not()
+        after_is_set = Map.get(args, :after) |> is_nil() |> Kernel.not()
+        {:ok, %{nodes: nodes, parent: parent, args: args, page_info: %{
+          has_next_page: (has_first_or_last && total_node_length > first) || before_is_set,
+          has_previous_page: (has_first_or_last && total_node_length > last) || after_is_set
+        }}}
       end
 
       def resolve_one(repo, field_name) do
@@ -953,7 +969,7 @@ defmodule AbsintheGen.SchemaGenerator do
       ```
       \"\"\"
       def resolve_page_info() do
-        fn %{nodes: nodes, args: parent_args}, _, _ ->
+        fn %{nodes: nodes, args: parent_args, page_info: page_info}, _, _ ->
           {_dir, col} =
             order_by =
             case Map.get(parent_args, :order_by) do
@@ -975,13 +991,10 @@ defmodule AbsintheGen.SchemaGenerator do
             end
 
           {:ok,
-            %{
-              start_cursor: start_cursor_val,
-              end_cursor: end_cursor_val,
-              has_next_page: true,
-              has_previous_page: true
-            }
-          }
+          Map.merge(page_info, %{
+            start_cursor: start_cursor_val,
+            end_cursor: end_cursor_val,
+          })}
         end
       end
 

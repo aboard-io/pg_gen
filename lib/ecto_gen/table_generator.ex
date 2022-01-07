@@ -456,11 +456,11 @@ defmodule EctoGen.TableGenerator do
             nil ->
               case Map.get(opts, :last) do
                 nil -> query
-                num -> query |> limit(^num)
+                num -> query |> limit(^(num + 1))
               end
 
             num ->
-              query |> limit(^num)
+              query |> limit(^(num + 1))
           end
         end
 

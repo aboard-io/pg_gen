@@ -95,8 +95,12 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-      
-            {:ok, %{ nodes: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), args: args, parent: nil }}
+
+            Resolvers.Connections.return_nodes(
+              #{singular_camelized_table_name}.list_#{name}(args, computed_selections),
+              nil,
+              args
+            )
           end
           """
         else
