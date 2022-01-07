@@ -110,7 +110,13 @@ defmodule EctoGen.ContextGenerator do
       """
       def list_#{Inflex.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
         from(#{table_name})
-        |> Connections.query(__MODULE__).(args)
+        |> Connections.query(__MODULE__).(
+          Map.merge(args, %{
+            __selections: %{
+              computed_selections: computed_selections
+            }
+          })
+        )
         |> Repo.all()
         |> Enum.map(
           &Utils.cast_computed_selections(
@@ -118,7 +124,6 @@ defmodule EctoGen.ContextGenerator do
             #{table_name}.computed_fields_with_types(computed_selections)
           )
         )
-    
       end
       """
     end}
