@@ -33,6 +33,7 @@ defmodule EctoGen.ContextGenerator do
     extension_module_name = "#{module_name}.Extend"
     overrides = get_overrides(extension_module_name)
     extensions = get_extensions(extension_module_name)
+    preloads = get_preloads(extension_module_name)
 
     function_strings_for_table =
       (functions.queries ++ functions.mutations)
@@ -44,7 +45,7 @@ defmodule EctoGen.ContextGenerator do
         %{name: name} -> name not in overrides
         _ -> false
       end)
-      |> Enum.map(&custom_function_to_string(&1, schema))
+      |> Enum.map(&custom_function_to_string(&1, schema, preloads))
       |> Enum.join("\n")
 
     computed_columns =
@@ -337,10 +338,10 @@ defmodule EctoGen.ContextGenerator do
     """
   end
 
-  def custom_function_to_string(%{returns_set: false} = function, schema),
-    do: custom_function_returning_record_to_string(function, schema)
+  def custom_function_to_string(%{returns_set: false} = function, schema, preloads),
+    do: custom_function_returning_record_to_string(function, schema, preloads)
 
-  def custom_function_to_string(%{returns_set: true} = function, schema),
+  def custom_function_to_string(%{returns_set: true} = function, schema, _preloads),
     do: custom_function_returning_set_to_string(function, schema)
 
   def custom_function_returning_set_to_string(
@@ -386,7 +387,8 @@ defmodule EctoGen.ContextGenerator do
           returns_set: false,
           args: arg_types
         },
-        schema
+        schema,
+        preloads
       ) do
     simple_args_str = Enum.join(arg_names, ", ")
     args_str = generate_args_str(arg_types)
@@ -398,11 +400,14 @@ defmodule EctoGen.ContextGenerator do
       |> Enum.with_index(fn _, index -> "$#{index + 1}" end)
       |> Enum.join(", ")
 
+    preload = Map.get(preloads, name, false)
+    preload_string = if preload, do: "|> Repo.preload(#{Macro.to_string(preload)})", else: ""
+
     """
     def #{name}(#{simple_args_str}) do
       case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
         {:ok, result} ->
-          Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first()
+          Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first() #{preload_string}
 
         {:error, reason} ->
           {:error, reason.postgres}
@@ -539,5 +544,10 @@ defmodule EctoGen.ContextGenerator do
   def get_extensions(module_name) do
     extensions_module = Module.concat(Elixir, module_name)
     Utils.maybe_apply(extensions_module, :extensions, [], [])
+  end
+
+  def get_preloads(module_name) do
+    extensions_module = Module.concat(Elixir, module_name)
+    Utils.maybe_apply(extensions_module, :preloads, [], %{})
   end
 end

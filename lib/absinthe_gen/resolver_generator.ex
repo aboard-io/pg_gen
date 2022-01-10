@@ -367,7 +367,7 @@ defmodule AbsintheGen.ResolverGenerator do
 
         case Enum.filter(project, &(&1.name == "nodes")) do
           [] -> false
-          [nodes] -> true
+          [_nodes] -> true
         end
       end
     end
