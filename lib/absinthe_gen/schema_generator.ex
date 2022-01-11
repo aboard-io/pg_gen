@@ -771,7 +771,7 @@ defmodule AbsintheGen.SchemaGenerator do
       end
 
       field :total_count, non_null(:integer) do
-        resolve Connections.resolve_count(#{app}.Repo.#{singular_camelized_table_name}, :#{plural_underscore_table_name})
+        resolve Connections.resolve_count(#{app}.Repo.#{singular_camelized_table_name})
       end
     end
     """
@@ -806,17 +806,26 @@ defmodule AbsintheGen.SchemaGenerator do
         fn
           queryable,
           %{
-            total_count: true
+            total_count: true,
+            group_by: grouping
           } = args ->
             args =
               args
               |> Map.delete(:first)
               |> Map.delete(:last)
 
+          groupings =
+            [
+              :id
+            ] ++
+              Enum.map(grouping, fn col ->
+                dynamic([q, a], field(a, ^col))
+              end)
+
             from(queryable)
             |> Repo.Filter.apply(args)
             |> select([_], count())
-            |> group_by([q], [q.id])
+            |> group_by([q, a], ^groupings)
 
           queryable,
           %{
@@ -846,51 +855,54 @@ defmodule AbsintheGen.SchemaGenerator do
           # when it's just a passthrough of already-resolved nodes; this happens
           # when it's a top-level query being resolved.
           %{nodes: nodes, parent: nil}, args, _ ->
-            return_nodes(nodes, nil, args)
+            return_nodes(nodes, nil, args, field_name)
 
           # this is the default case for associations. it resolves at the top level, 
           # then passes down the nodes, parent, and args to the children so they
           # can handle nodes, page_info, and total_count
           parent, args, %{context: %{loader: loader}} = info ->
+            if Utils.has_nodes?(info) do
+              computed_selections = Utils.get_computed_selections(info, repo)
 
-            computed_selections = Utils.get_computed_selections(info, repo)
+              args =
+                Map.put(args, :__selections, %{
+                  computed_selections: computed_selections
+                })
 
-            args =
-              Map.put(args, :__selections, %{
-                computed_selections: computed_selections
-              })
-
-            # If nodes are already loaded, return them. This will be rare,
-            # but is occasionally helpful. E.g., dataloader will spawn new
-            # connections to run queries in parallel, which can cause problems with
-            # RLS (queries for items not yet committed)
-            if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
-              parent
-              |> Map.get(field_name)
-              |> return_nodes(parent, args)
-            else
-              loader
-              |> Dataloader.load(repo, {field_name, args}, parent)
-              |> on_load(fn loader_with_data ->
-                Dataloader.get(
-                  loader_with_data,
-                  repo,
-                  {field_name, args},
-                  parent
-                )
-                |> Enum.map(
-                  &Utils.cast_computed_selections(
-                    &1,
-                    repo.computed_fields_with_types(computed_selections)
+              # If nodes are already loaded, return them. This will be rare,
+              # but is occasionally helpful. E.g., dataloader will spawn new
+              # connections to run queries in parallel, which can cause problems with
+              # RLS (queries for items not yet committed)
+              if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
+                parent
+                |> Map.get(field_name)
+                |> return_nodes(parent, args, field_name)
+              else
+                loader
+                |> Dataloader.load(repo, {field_name, args}, parent)
+                |> on_load(fn loader_with_data ->
+                  Dataloader.get(
+                    loader_with_data,
+                    repo,
+                    {field_name, args},
+                    parent
                   )
-                )
-                |> return_nodes(parent, args)
-              end)
+                  |> Enum.map(
+                    &Utils.cast_computed_selections(
+                      &1,
+                      repo.computed_fields_with_types(computed_selections)
+                    )
+                  )
+                  |> return_nodes(parent, args, field_name)
+                end)
+              end
+            else
+              return_nodes([], parent, args, field_name)
             end
         end
       end
 
-      def return_nodes(total_nodes, parent, args) do
+      def return_nodes(total_nodes, parent, args, field_name \\\\ nil) do
         first = Map.get(args, :first)
         last = Map.get(args, :last)
         has_first_or_last = (first || last) |> is_nil() |> Kernel.not()
@@ -916,9 +928,10 @@ defmodule AbsintheGen.SchemaGenerator do
         total_node_length = length(total_nodes)
         before_is_set = Map.get(args, :before) |> is_nil() |> Kernel.not()
         after_is_set = Map.get(args, :after) |> is_nil() |> Kernel.not()
-        {:ok, %{nodes: nodes, parent: parent, args: args, page_info: %{
-          has_next_page: (has_first_or_last && total_node_length > first) || before_is_set,
-          has_previous_page: (has_first_or_last && total_node_length > last) || after_is_set
+        {:ok, %{nodes: nodes, parent: parent, args: args, field_name: field_name,
+          page_info: %{
+            has_next_page: (has_first_or_last && total_node_length > first) || before_is_set,
+            has_previous_page: (has_first_or_last && total_node_length > last) || after_is_set
         }}}
       end
 
@@ -998,11 +1011,11 @@ defmodule AbsintheGen.SchemaGenerator do
         end
       end
 
-      def resolve_count(repo, field_name) do
+      def resolve_count(repo) do
         fn
           # if there is no parent (it's a root-level query), we can do the aggregate
           # w/out dataloader
-          %{parent: nil, args: args}, _, _ ->
+          %{parent: nil, args: args, field_name: nil}, _, _ ->
             args =
               args
               |> Map.delete(:first)
@@ -1015,9 +1028,16 @@ defmodule AbsintheGen.SchemaGenerator do
 
             {:ok, count}
 
-          %{parent: parent, args: args}, _args, %{context: %{loader: loader}} ->
-            # computed_selections = Utils.get_computed_selections(info, repo)
-            args = Map.put(args, :total_count, true)
+          %{parent: parent, args: args, field_name: field_name},
+          _args,
+          %{context: %{loader: loader}} ->
+            association = parent.__struct__.__schema__(:association, field_name)
+            group_by = Keyword.keys(Map.get(association, :join_keys, []))
+
+            args =
+              args
+              |> Map.put(:total_count, true)
+              |> Map.put(:group_by, group_by)
 
             loader
             |> Dataloader.load(repo, {field_name, args}, parent)
@@ -1500,7 +1520,7 @@ defmodule AbsintheGen.SchemaGenerator do
           resolve Connections.resolve_page_info()
         end
         field :total_count, non_null(:integer) do
-          resolve Connections.resolve_count(#{app}.Repo.#{singular_camelized_table_name}, :#{plural_underscore_table_name})
+          resolve Connections.resolve_count(#{app}.Repo.#{singular_camelized_table_name})
         end
       end
 
