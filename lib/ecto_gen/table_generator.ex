@@ -362,16 +362,78 @@ defmodule EctoGen.TableGenerator do
         end
 
         defp filter(query, input) do
-          from(q in query, where: ^build_and(input))
+          source =
+            case query do
+              source when is_atom(source) ->
+                source
+
+              query ->
+                {_, source} = query.from.source
+                source
+            end
+
+          query = from(q in query, where: ^build_and(input, source))
+
+          build_assoc_and(query, input, source)
         end
 
-        defp build_and(input) do
-          Enum.reduce(input, nil, fn {k, v}, conditions ->
-            condition = build_condition(k, v)
+        defp build_assoc_and(query, input, source) do
+          Enum.reduce(input, query, fn {k, v}, query ->
+            if source && k in source.__schema__(:associations) do
+              assoc = source.__schema__(:association, k)
 
-            if conditions == nil,
-              do: condition,
-              else: dynamic([c], ^condition and ^conditions)
+              if assoc.relationship == :child do
+                raise "Child associations are not currently supported"
+              end
+
+              join_query =
+                join(query, :inner, [c], a in ^assoc.related,
+                  on: [id: field(c, ^assoc.owner_key)],
+                  as: :filter_assoc
+                )
+
+              conditions =
+                Enum.reduce(v, nil, fn {k, v}, conditions ->
+                  condition = build_assoc_condition(k, v)
+
+                  if conditions == nil do
+                    condition
+                  else
+                    if condition == nil do
+                      conditions
+                    else
+                      dynamic([c], ^condition and ^conditions)
+                    end
+                  end
+                end)
+
+              if conditions == nil do
+                join_query
+              else
+                join_query |> where(^conditions)
+              end
+            else
+              query
+            end
+          end)
+        end
+
+        defp build_and(input, source \\\\ nil) do
+          Enum.reduce(input, nil, fn {k, v}, conditions ->
+            condition =
+              unless source && k in source.__schema__(:associations) do
+                build_condition(k, v)
+              end
+
+            if conditions == nil do
+              condition
+            else
+              if condition == nil do
+                conditions
+              else
+                dynamic([c], ^condition and ^conditions)
+              end
+            end
           end)
         end
 
@@ -426,6 +488,42 @@ defmodule EctoGen.TableGenerator do
 
         defp build_condition(field, value),
           do: raise(~s{Unsupported filter "\#{field}": "\#{inspect(value)}"})
+
+        defp build_assoc_condition(field, input) when is_binary(field),
+          do: build_assoc_condition(String.to_existing_atom(field), input)
+
+        defp build_assoc_condition(field, %{greater_than: value}),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) > ^value)
+
+        defp build_assoc_condition(field, %{greater_than_or_equal_to: value}),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) >= ^value)
+
+        defp build_assoc_condition(field, %{less_than: value}),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) < ^value)
+
+        defp build_assoc_condition(field, %{less_than_or_equal_to: value}),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) <= ^value)
+
+        defp build_assoc_condition(field, %{equal_to: value}),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) == ^value)
+
+        defp build_assoc_condition(field, %{not_equal_to: value}),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) != ^value)
+
+        defp build_assoc_condition(field, %{is_null: true}),
+          do: dynamic([c, filter_assoc: a], is_nil(field(a, ^field)))
+
+        defp build_assoc_condition(field, %{is_null: false}),
+          do: dynamic([c, filter_assoc: a], not is_nil(field(a, ^field)))
+
+        defp build_assoc_condition(field, value) when is_binary(value) or is_number(value),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) == ^value)
+
+        defp build_assoc_condition(field, %{"$in" => value}) when is_list(value),
+          do: dynamic([c, filter_assoc: a], field(a, ^field) in ^value)
+
+        defp build_assoc_condition(field, value),
+          do: raise(~s{U, ansupported filter "\#{field}": "\#{inspect(value)}"})
 
         defp maybe_sort(query, opts) do
           case Map.get(opts, :order_by) do

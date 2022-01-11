@@ -90,7 +90,7 @@ defmodule AbsintheGen.SchemaGenerator do
       end)
       |> Enum.join("\n")
 
-    # Build the refernece fields for the object
+    # Build the reference fields for the object
     references =
       case Map.get(table, :external_references) do
         nil ->
@@ -320,7 +320,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_selectable(_, _), do: ""
 
-  def generate_condition_and_filter_input(%{indexed_attrs: indexed_attrs, name: name}) do
+  def generate_condition_and_filter_input(%{indexed_attrs: indexed_attrs, name: name} = table) do
     %{singular_underscore_table_name: singular_underscore_table_name} = get_table_names(name)
 
     condition_fields =
@@ -343,6 +343,21 @@ defmodule AbsintheGen.SchemaGenerator do
         """
       end)
 
+    parent_table_filter_fields =
+      table.attributes
+      |> Enum.filter(fn %{constraints: constraints} ->
+        Enum.find(constraints, &Map.has_key?(&1, :referenced_table))
+        |> is_nil()
+        |> Kernel.not()
+      end)
+      |> Enum.map(&Builder.build/1)
+      |> Enum.map(fn {_assoc, name, type, _opts} ->
+        type = Macro.underscore(type)
+        """
+        field :#{name}, :#{type}_filter
+        """
+      end)
+
     """
     input_object :#{singular_underscore_table_name}_condition do
       #{condition_fields}
@@ -350,6 +365,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     input_object :#{singular_underscore_table_name}_filter do
       #{filter_fields}
+      #{parent_table_filter_fields}
     end
     """
   end
@@ -814,18 +830,33 @@ defmodule AbsintheGen.SchemaGenerator do
               |> Map.delete(:first)
               |> Map.delete(:last)
 
+                  query =
+          from(queryable)
+          |> Repo.Filter.apply(args)
+          |> select([_], count())
+
           groupings =
-            [
-              :id
-            ] ++
+          [
+            :id
+          ] ++
+            # FIXME This is preeetty hacky. Basically bindings are tough to
+            # reason about, and you can't get overly clever/dynamic with them,
+            # as far as I can tell. This checks if there are existing bindings,
+            # and if there are, it applies the grouping to another binding. I'm
+            # guessing this is brittle and will break with the right query,
+            # but this seems to work for our needs right now.
+            if length(query.joins) > 0 do
+              Enum.map(grouping, fn col ->
+                dynamic([q, a, a2], field(a2, ^col))
+              end)
+            else
               Enum.map(grouping, fn col ->
                 dynamic([q, a], field(a, ^col))
               end)
+            end
 
-            from(queryable)
-            |> Repo.Filter.apply(args)
-            |> select([_], count())
-            |> group_by([q, a], ^groupings)
+            query
+            |> group_by([q], ^groupings)
 
           queryable,
           %{
@@ -1507,8 +1538,7 @@ defmodule AbsintheGen.SchemaGenerator do
         |> Enum.join("\n")
 
       %{
-        singular_camelized_table_name: singular_camelized_table_name,
-        plural_underscore_table_name: plural_underscore_table_name
+        singular_camelized_table_name: singular_camelized_table_name
       } = Utils.get_table_names(name)
 
       app = PgGen.LocalConfig.get_app_name()
