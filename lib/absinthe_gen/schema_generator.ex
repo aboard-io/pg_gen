@@ -830,33 +830,43 @@ defmodule AbsintheGen.SchemaGenerator do
               |> Map.delete(:first)
               |> Map.delete(:last)
 
-                  query =
-          from(queryable)
-          |> Repo.Filter.apply(args)
-          |> select([_], count())
+            query =
+              from(queryable)
+              |> Repo.Filter.apply(args)
+              |> select([_], count())
 
-          groupings =
-          [
-            :id
-          ] ++
-            # FIXME This is preeetty hacky. Basically bindings are tough to
-            # reason about, and you can't get overly clever/dynamic with them,
-            # as far as I can tell. This checks if there are existing bindings,
-            # and if there are, it applies the grouping to another binding. I'm
-            # guessing this is brittle and will break with the right query,
-            # but this seems to work for our needs right now.
-            if length(query.joins) > 0 do
-              Enum.map(grouping, fn col ->
-                dynamic([q, a, a2], field(a2, ^col))
-              end)
-            else
-              Enum.map(grouping, fn col ->
-                dynamic([q, a], field(a, ^col))
-              end)
-            end
+            # FIXME This is a little hacky. Basically bindings are tough to reason
+            # about, and you can't get overly clever/dynamic with them, as far as I
+            # can tell. What we know is that the binding for our count group_by is
+            # the _last_ binding, but we can't pull the last binding off a list
+            # with this macro, so this just ensures we're getting the last one. The
+            # first binding is always the `from` table, the rest that are already
+            # on the query are from our filter, so we'll just grab the binding
+            # after those three.
+            groupings =
+              [
+                :id
+              ] ++
+                case length(query.joins) do
+                  # I don't imagine we'll ever need more than 3, but we'll see.
+                  4 -> raise "Why are there so many joins happening here?"
+                  3 -> Enum.map(grouping, fn col ->
+                    dynamic([q, _, _, _, a], field(a, ^col))
+                  end)
+                  2 -> Enum.map(grouping, fn col ->
+                    dynamic([q, _, _, a], field(a, ^col))
+                  end)
+                  1 -> Enum.map(grouping, fn col ->
+                    dynamic([q, _, a], field(a, ^col))
+                  end)
+                  0 -> Enum.map(grouping, fn col ->
+                    dynamic([q, a], field(a, ^col))
+                  end)
+                end
 
             query
             |> group_by([q], ^groupings)
+
 
           queryable,
           %{
