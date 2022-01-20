@@ -80,6 +80,10 @@ defmodule PgGen.Schema do
     generate_strings(:imports, contents)
   end
 
+  defmacro middleware(contents) do
+    generate_strings(:middleware, contents)
+  end
+
   def get_quoted_contents(contents) do
     case contents do
       {:__block__, [], contents} -> contents

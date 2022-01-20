@@ -222,6 +222,13 @@ defmodule AbsintheGen.SchemaGenerator do
     extensions_module = Module.concat(Elixir, "#{module_name_web}.Schema.Extends")
     extensions_module_exists = Utils.does_module_exist(extensions_module)
 
+    [middleware_modules] = Utils.maybe_apply(
+      extensions_module,
+      "middleware",
+      [],
+      [nil]
+    )
+
     """
     defmodule #{module_name_web}.Schema do
       use Absinthe.Schema
@@ -281,6 +288,19 @@ defmodule AbsintheGen.SchemaGenerator do
 
       #{dataloader}
 
+      #{if middleware_modules do
+        """
+        def middleware(middleware, _field, %Absinthe.Type.Object{identifier: identifier})
+          when identifier in [:mutation] do
+            middleware ++ [#{Enum.join(middleware_modules, ", ")}]
+        end
+
+        def middleware(middleware, _field, _object) do
+          middleware
+        end
+
+        """
+      end}
     end
     """
   end
@@ -1296,11 +1316,7 @@ defmodule AbsintheGen.SchemaGenerator do
   def custom_subscriptions(module_prefix) do
     module = Module.concat(Elixir, "#{module_prefix}.Schema.Extends")
 
-    if Utils.does_module_exist(module) do
-      module.subscriptions() |> Enum.join("\n\n")
-    else
-      ""
-    end
+    Utils.maybe_apply(module, :subscriptions, [], []) |> Enum.join("\n\n")
   end
 
   def inject_custom_queries(query_defs, functions, tables, module_prefix) do
