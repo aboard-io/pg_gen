@@ -74,6 +74,17 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.join("\n")
 
     # Build the computed fields for the object, excluding any overrides
+    computed_fields_imports =
+      computed_fields
+      |> Enum.reduce("", fn %{simplified_name: name}, acc -> "#{acc} #{name}: 3," end)
+
+    computed_fields_import_string =
+      if computed_fields_imports == "" do
+        ""
+      else
+        "import #{app_name}Web.Resolvers.#{singular_camelized_table_name}, only: [#{computed_fields_imports}]"
+      end
+
     computed_fields =
       computed_fields
       |> Enum.map(&Builder.build/1)
@@ -147,7 +158,8 @@ defmodule AbsintheGen.SchemaGenerator do
        fields,
        conditions_and_input_objects,
        mutation_input_objects_and_payloads,
-       app_name
+       app_name,
+       computed_fields_import_string
      )}
   end
 
@@ -171,7 +183,8 @@ defmodule AbsintheGen.SchemaGenerator do
         fields,
         conditions_and_input_objects,
         mutation_input_objects_and_payloads,
-        app_name
+        app_name,
+        computed_fields_import_string
       ) do
     %{
       singular_camelized_table_name: singular_camelized_table_name,
@@ -195,6 +208,7 @@ defmodule AbsintheGen.SchemaGenerator do
     defmodule #{module_name_web}.Schema.#{singular_camelized_table_name}Types do
       use Absinthe.Schema.Notation
       #{if uses_dataloader, do: "import Absinthe.Resolution.Helpers, only: [dataloader: 1]", else: ""}
+      #{computed_fields_import_string}
       #{if uses_connections, do: "alias #{module_name_web}.Resolvers.Connections", else: ""}
       #{if String.contains?(body, "Repo"), do: "alias #{app_name}.Repo", else: ""}
 
@@ -222,12 +236,13 @@ defmodule AbsintheGen.SchemaGenerator do
     extensions_module = Module.concat(Elixir, "#{module_name_web}.Schema.Extends")
     extensions_module_exists = Utils.does_module_exist(extensions_module)
 
-    [middleware_modules] = Utils.maybe_apply(
-      extensions_module,
-      "middleware",
-      [],
-      [nil]
-    )
+    [middleware_modules] =
+      Utils.maybe_apply(
+        extensions_module,
+        "middleware",
+        [],
+        [nil]
+      )
 
     """
     defmodule #{module_name_web}.Schema do
@@ -289,18 +304,18 @@ defmodule AbsintheGen.SchemaGenerator do
       #{dataloader}
 
       #{if middleware_modules do
-        """
-        def middleware(middleware, _field, %Absinthe.Type.Object{identifier: identifier})
-          when identifier in [:mutation] do
-            middleware ++ [#{Enum.join(middleware_modules, ", ")}]
-        end
-
-        def middleware(middleware, _field, _object) do
-          middleware
-        end
-
-        """
-      end}
+      """
+      def middleware(middleware, _field, %Absinthe.Type.Object{identifier: identifier})
+        when identifier in [:mutation] do
+          middleware ++ [#{Enum.join(middleware_modules, ", ")}]
+      end
+    
+      def middleware(middleware, _field, _object) do
+        middleware
+      end
+    
+      """
+    end}
     end
     """
   end
@@ -373,6 +388,7 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.map(&Builder.build/1)
       |> Enum.map(fn {_assoc, name, type, _opts} ->
         type = Macro.underscore(type)
+
         """
         field :#{name}, :#{type}_filter
         """

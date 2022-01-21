@@ -151,7 +151,7 @@ defmodule PgGen.Generator do
           Enum.find(tables, fn %{name: t_name} ->
             t_name == name
           end),
-          functions.queries ++ functions.mutations
+          functions
         )
       end)
       |> Enum.filter(fn {_, code} -> !is_nil(code) end)

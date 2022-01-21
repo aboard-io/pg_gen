@@ -19,25 +19,40 @@ defmodule AbsintheGen.FieldGenerator do
   def to_string(attr, table \\ %{})
 
   def to_string({:field, name, type, options}, _table) do
-    # don't need a resolve method on scalar fields
+    # don't need a resolve method on non-virtual scalar fields
     options = Keyword.delete(options, :resolve_method)
 
     type_str =
       process_type(@type_map[type] || type, options)
       |> wrap_non_null_type(options)
 
-    str = "field :#{name}, #{type_str}"
+    is_virtual = Keyword.get(options, :virtual, false)
+    str = "field :#{name}, #{type_str} #{if is_virtual, do: "do\n"}"
 
     {description, options} = Keyword.pop(options, :description)
 
     str =
       case description do
-        nil -> str
-        description -> str <> ", description: \"#{description}\""
+        nil ->
+          str
+
+        "" ->
+          str
+
+        description ->
+          str <>
+            "#{if !is_virtual, do: ","} description#{if !is_virtual, do: ":"} \"#{String.trim(description)}\""
       end
 
-    str
-    |> process_options({:field, name, type, options})
+    str =
+      str
+      |> process_options({:field, name, type, options})
+
+    if is_virtual do
+      str |> with_end
+    else
+      str
+    end
   end
 
   def to_string({:belongs_to, name, _type, options} = field, _table) do
@@ -107,10 +122,19 @@ defmodule AbsintheGen.FieldGenerator do
     Enum.reduce(options, base, fn {k, v}, acc ->
       case k do
         :description ->
-          """
-          #{acc}
-            description \"#{v}\"
-          """
+          case v do
+            nil ->
+              acc
+
+            "" ->
+              acc
+
+            description ->
+              """
+              #{acc}
+                description \"#{String.trim(description)}\"
+              """
+          end
 
         :resolve_method ->
           case v do
@@ -121,6 +145,7 @@ defmodule AbsintheGen.FieldGenerator do
                   #{acc}
                     resolve Connections.resolve_one(Repo.#{type}, :#{name})
                   """
+
                 :has_one ->
                   """
                   #{acc}
@@ -134,6 +159,12 @@ defmodule AbsintheGen.FieldGenerator do
                   """
               end
           end
+
+        :virtual ->
+          """
+          #{acc}
+          resolve &#{name}/3
+          """
 
         _ ->
           acc
@@ -179,14 +210,15 @@ defmodule AbsintheGen.FieldGenerator do
 
   def type_map, do: @type_map
 
-  defp single_relation({_, name, type, options} = field) do 
+  defp single_relation({_, name, type, options} = field) do
     type_str =
       process_type(type, options)
       |> wrap_non_null_type(options)
 
-      "field :#{Inflex.singularize(name)}, #{type_str} do"
-      |> process_options(field)
-      |> with_end
+    "field :#{Inflex.singularize(name)}, #{type_str} do"
+    |> process_options(field)
+    |> with_end
   end
+
   defp append_line(str1, str2), do: str1 <> "\n" <> str2
 end

@@ -37,8 +37,13 @@ defmodule AbsintheGen.ResolverGenerator do
     extensions_module = Module.concat(Elixir, "#{module_name}.Extend")
     extensions_module_exists = Utils.does_module_exist(extensions_module)
 
+    computed_column_strings_for_table =
+      functions.computed_columns_by_table[name]
+      |> Enum.map(&custom_column_to_string(&1, singular_camelized_table_name))
+      |> Enum.join("\n")
+
     function_strings_for_table =
-      functions
+      (functions.queries ++ functions.mutations)
       |> Enum.filter(fn
         %{return_type: %{type: %{name: ^name}}} -> true
         _ -> false
@@ -52,7 +57,7 @@ defmodule AbsintheGen.ResolverGenerator do
     app_atom = Macro.camelize(app_name)
 
     if !insertable && !selectable && !updatable && !deletable && !extensions_module_exists &&
-         function_strings_for_table == "" do
+         function_strings_for_table == "" && computed_column_strings_for_table == "" do
       nil
     else
       """
@@ -73,7 +78,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-      
+
             case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections) do
               :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
               result -> {:ok, result}
@@ -95,9 +100,9 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-
+      
             nodes = if Resolvers.Utils.has_nodes?(info), do: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), else: []
-
+      
             Resolvers.Connections.return_nodes(
               nodes,
               nil,
@@ -191,6 +196,7 @@ defmodule AbsintheGen.ResolverGenerator do
       end}
 
         #{function_strings_for_table}
+        #{computed_column_strings_for_table}
       end
       """
     end
@@ -268,7 +274,7 @@ defmodule AbsintheGen.ResolverGenerator do
       |> Enum.map(fn %{
                        name: name,
                        arg_names: arg_names,
-                       is_stable: is_stable,
+                       is_stable: is_stable
                      } ->
         has_args = length(arg_names) > 0
         arg_var = if is_stable, do: "args", else: "args.input"
@@ -294,6 +300,28 @@ defmodule AbsintheGen.ResolverGenerator do
     """
     defmodule #{module_name}Web.Resolvers.PgFunctions do
       #{function_strs}
+    end
+    """
+  end
+
+  def custom_column_to_string(
+        %{
+          simplified_name: simplified_name
+        } = custom_column,
+        singular_camelized_table_name
+      ) do
+    """
+    def #{simplified_name}(parent, _, _) do
+      case Map.get(parent, :#{simplified_name}) do
+        nil ->
+          case #{singular_camelized_table_name}.#{simplified_name}(parent) do
+            {:error, reason} -> {:error, reason}
+            result -> {:ok, result}
+          end
+
+        result ->
+          {:ok, result}
+      end
     end
     """
   end
