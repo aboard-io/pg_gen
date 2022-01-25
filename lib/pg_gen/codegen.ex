@@ -153,6 +153,10 @@ defmodule PgGen.Codegen do
       file_path: "#{repo_file_path}/ecto_json.ex"
     )
 
+    HotModule.load(EctoGen.TableGenerator.repo_helper(app.camelized),
+      file_path: "#{repo_file_path}/helper.ex"
+    )
+
     repos
     |> Flow.from_enumerable()
     |> Flow.map(fn {name, code_str} ->

@@ -40,7 +40,7 @@ defmodule EctoGen.TableGenerator do
         end
       end)
 
-    app_module_name = PgGen.LocalConfig.get_app_name
+    app_module_name = PgGen.LocalConfig.get_app_name()
     module_name = "#{app_module_name}.Repo.#{Macro.camelize(Inflex.singularize(name))}"
     extension_module_name = "#{module_name}Extend"
     overrides = get_overrides(extension_module_name)
@@ -48,7 +48,7 @@ defmodule EctoGen.TableGenerator do
 
     attribute_string =
       built_attributes
-      |> Enum.filter(fn 
+      |> Enum.filter(fn
         {:field, name, _, _} -> !(name in overrides)
         _ -> true
       end)
@@ -150,6 +150,7 @@ defmodule EctoGen.TableGenerator do
        use Ecto.Schema
        import Ecto.Changeset
 
+       alias #{app_name}.Repo
        alias #{app_name}.Repo.{#{aliases}}
 
 
@@ -203,15 +204,13 @@ defmodule EctoGen.TableGenerator do
 
 
           def to_pg_row(%{} = map) do
-            [#{Enum.map(attributes, &"{:#{&1.name}, :#{&1.type.name}}") |> Enum.join(", ")}]
-            |> Enum.map(fn
-              {field, :uuid} -> case Map.get(map, field) do
-                nil -> nil
-                id -> Ecto.UUID.dump!(id)
-              end
-              {field, _} -> Map.get(map, field)
-            end)
-            |> List.to_tuple()
+          [#{Enum.map(attributes, &"{:#{&1.name}, :#{
+            if &1.type.enum_variants == nil do
+              &1.type.name
+            else
+              "enum"
+            end}}") |> Enum.join(", ")}]
+            |> Repo.Helper.cast_values_for_pg(map)
           end
           def computed_fields do
             [#{computed_fields_fun_str}]
@@ -581,5 +580,27 @@ defmodule EctoGen.TableGenerator do
   def get_extensions(module_name) do
     extensions_module = Module.concat(Elixir, module_name)
     Utils.maybe_apply(extensions_module, :extensions, [], [])
+  end
+
+  def repo_helper(module_name) do
+    """
+    defmodule #{module_name}.Repo.Helper do
+      def cast_values_for_pg(values, map) do
+        values
+        |> Enum.map(fn
+          {field, :uuid} -> case Map.get(map, field) do
+            nil -> nil
+            id -> Ecto.UUID.dump!(id)
+          end
+          {field, :enum} -> case Map.get(map, field) do
+            nil -> nil
+            atom when is_atom(atom) -> to_string(atom)
+          end
+          {field, _} -> Map.get(map, field)
+        end)
+        |> List.to_tuple()
+      end
+    end
+    """
   end
 end
