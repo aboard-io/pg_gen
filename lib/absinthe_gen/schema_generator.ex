@@ -11,6 +11,7 @@ defmodule AbsintheGen.SchemaGenerator do
     "jsonb",
     "bool",
     "int4",
+    "int8",
     "enum",
     "void"
   ]

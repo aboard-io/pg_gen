@@ -10,6 +10,7 @@ defmodule AbsintheGen.FieldGenerator do
     "jsonb" => "json",
     "bool" => "boolean",
     "int4" => "integer",
+    "int8" => "integer",
     # for postgres functions that return void, we'll return a success object
     "void" => "success_object"
   }

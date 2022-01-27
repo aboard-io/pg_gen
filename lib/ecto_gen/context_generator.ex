@@ -10,6 +10,7 @@ defmodule EctoGen.ContextGenerator do
     "jsonb",
     "bool",
     "int4",
+    "int8",
     "enum",
     "void"
   ]
@@ -45,7 +46,7 @@ defmodule EctoGen.ContextGenerator do
         %{name: name} -> name not in overrides
         _ -> false
       end)
-      |> Enum.map(&custom_function_to_string(&1, schema, preloads))
+      |> Enum.map(&custom_function_to_string(&1, schema, preloads, table))
       |> Enum.join("\n")
 
     computed_columns =
@@ -338,20 +339,22 @@ defmodule EctoGen.ContextGenerator do
     """
   end
 
-  def custom_function_to_string(%{returns_set: false} = function, schema, preloads),
+  def custom_function_to_string(%{returns_set: false} = function, schema, preloads, _table),
     do: custom_function_returning_record_to_string(function, schema, preloads)
 
-  def custom_function_to_string(%{returns_set: true} = function, schema, _preloads),
-    do: custom_function_returning_set_to_string(function, schema)
+  def custom_function_to_string(%{returns_set: true} = function, schema, _preloads, table),
+    do: custom_function_returning_set_to_string(function, schema, table)
 
   def custom_function_returning_set_to_string(
         %{
           name: name,
           return_type: %{type: %{name: type_name}},
           arg_names: arg_names,
-          returns_set: true
-        },
-        schema
+          returns_set: true,
+          args: arg_types
+        } = fun,
+        schema,
+        table
       ) do
     has_args = length(arg_names) > 0
     args = Enum.join(arg_names, ", ")
@@ -367,16 +370,37 @@ defmodule EctoGen.ContextGenerator do
       |> Enum.map(fn _ -> "?" end)
       |> Enum.join(", ")
 
-    """
-    def #{name}(#{if has_args, do: "#{args},"} args) do
-      from(t in Repo.#{repo_name},
-      join: s in fragment("select * from #{schema}.#{name}(#{question_marks})"#{if has_args, do: ", #{pinned_args}"}),
-      on: s.id == t.id)
-        |> Repo.Filter.apply(args)
-        |> Repo.all()
+    if table.selectable do
+      """
+      def #{name}(#{if has_args, do: "#{args},"} args) do
+        from(t in Repo.#{repo_name},
+        join: s in fragment("select * from #{schema}.#{name}(#{question_marks})"#{if has_args, do: ", #{pinned_args}"}),
+        on: s.id == t.id)
+          |> Repo.Filter.apply(args)
+          |> Repo.all()
+      end
+      """
+    else
+      simple_args_str = Enum.join(arg_names, ", ")
+      args_str = generate_args_str(arg_types)
 
+      repo_name = type_name |> Inflex.singularize() |> Macro.camelize()
+
+      arg_positions =
+        arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
+
+      """
+      def #{name}(#{simple_args_str}) do
+        case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+          {:ok, result} ->
+            Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1}))
+
+          {:error, reason} ->
+            {:error, reason.postgres}
+        end
+      end
+      """
     end
-    """
   end
 
   def custom_function_returning_record_to_string(

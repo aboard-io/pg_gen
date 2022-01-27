@@ -9,6 +9,7 @@ defmodule AbsintheGen.ResolverGenerator do
     "jsonb",
     "bool",
     "int4",
+    "int8",
     "enum",
     "void"
   ]
@@ -51,7 +52,7 @@ defmodule AbsintheGen.ResolverGenerator do
       |> Enum.filter(fn %{name: name} ->
         !(extensions_module_exists && name in extensions_module.overrides())
       end)
-      |> Enum.map(&custom_function_to_string/1)
+      |> Enum.map(&custom_function_to_string(&1, table))
       |> Enum.join("\n")
 
     app_atom = Macro.camelize(app_name)
@@ -78,7 +79,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-
+      
             case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections) do
               :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
               result -> {:ok, result}
@@ -202,19 +203,22 @@ defmodule AbsintheGen.ResolverGenerator do
     end
   end
 
-  def custom_function_to_string(%{returns_set: true} = function),
-    do: custom_function_returning_set_to_string(function)
+  def custom_function_to_string(%{returns_set: true} = function, table),
+    do: custom_function_returning_set_to_string(function, table)
 
-  def custom_function_to_string(%{returns_set: false} = function),
+  def custom_function_to_string(%{returns_set: false} = function, _table),
     do: custom_function_returning_record_to_string(function)
 
-  def custom_function_returning_set_to_string(%{
-        name: name,
-        return_type: %{type: %{name: type_name}},
-        arg_names: arg_names,
-        is_stable: is_stable,
-        returns_set: true
-      }) do
+  def custom_function_returning_set_to_string(
+        %{
+          name: name,
+          return_type: %{type: %{name: type_name}},
+          arg_names: arg_names,
+          is_stable: is_stable,
+          returns_set: true
+        },
+        table
+      ) do
     context_module_str = type_name |> Inflex.singularize() |> Macro.camelize()
     args_for_context = Enum.join(arg_names, ", ")
 
@@ -229,7 +233,25 @@ defmodule AbsintheGen.ResolverGenerator do
         } = #{if is_stable, do: "args", else: "args.input"}
       """
     end}
+      #{if table.selectable do
+      """
       {:ok, %{nodes: #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context},"} args), args: args}}
+      """
+    else
+      """
+      case #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context}"}) do
+        {:error, reason} ->
+          {:error, reason}
+    
+        result ->
+          {:ok,
+          %{
+            nodes: result,
+            args: args
+          }}
+      end
+      """
+    end}
     end
     """
   end

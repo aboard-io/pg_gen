@@ -7,6 +7,7 @@ defmodule EctoGen.FieldGenerator do
     "jsonb" => "EctoJSON",
     "bool" => "boolean",
     "int4" => "integer",
+    "int8" => "integer",
     "enum" => "Ecto.Enum"
   }
 
