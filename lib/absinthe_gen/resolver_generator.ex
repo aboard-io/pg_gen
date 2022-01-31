@@ -69,6 +69,9 @@ defmodule AbsintheGen.ResolverGenerator do
         "alias #{app_name}Web.Schema.ChangesetErrors"
       end}
 
+        use #{Macro.camelize(app_name)}Web.ErrorHandlerDecorator
+        @decorate_all handle()
+
         #{if selectable do
         select_name = "#{singular_underscore_table_name}"
         unless extensions_module_exists && select_name in extensions_module.overrides() do
@@ -79,7 +82,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-      
+
             case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections) do
               :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
               result -> {:ok, result}
@@ -418,6 +421,30 @@ defmodule AbsintheGen.ResolverGenerator do
         case Enum.filter(project, &(&1.name == "nodes")) do
           [] -> false
           [_nodes] -> true
+        end
+      end
+    end
+    """
+  end
+
+  def error_handling_decorator_template(module_name) do
+    """
+    defmodule #{module_name}.ErrorHandlerDecorator do
+      use Decorator.Define, handle: 0
+
+      def handle(body, context) do
+        quote do
+          try do
+            unquote(body)
+          rescue
+            e in Postgrex.Error ->
+              {:error, e.postgres}
+
+            e ->
+              # We want to explicitly handle as many errors as possible. If it's not
+              # explicitly handled, then raise
+              raise e
+          end
         end
       end
     end

@@ -35,7 +35,8 @@ defmodule PgGen.MixProject do
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
       # deps used by the generated code
       {:base62_uuid, "~> 2.0.0", github: "aboard-io/base62_uuid"},
-      {:absinthe_error_payload, "~> 1.1"}
+      {:absinthe_error_payload, "~> 1.1"},
+      {:decorator, "~> 1.4"}
     ]
   end
 end

@@ -177,7 +177,11 @@ defmodule PgGen.Codegen do
     web_module = "#{app.camelized}Web"
 
     HotModule.load(SchemaGenerator.changeset_errors_template(web_module),
-      file_path: "#{graphql_schema_path}/changeset_errors.ex"
+      file_path: "#{graphql_schema_path}/errors/changeset_errors.ex"
+    )
+
+    HotModule.load(AbsintheGen.ResolverGenerator.error_handling_decorator_template(web_module),
+      file_path: "#{graphql_schema_path}/errors/error_handler_decorator.ex"
     )
 
     HotModule.load(SchemaGenerator.json_type(web_module <> ".Schema"),
