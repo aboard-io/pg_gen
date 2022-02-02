@@ -347,8 +347,19 @@ defmodule Introspection.Model do
     %{type: :primary_key}
   end
 
-  def build_constraint(%{"type" => "u", "keyAttributeNums" => attr_nums}, _, _) do
-    %{type: :uniq, with: attr_nums}
+  # {
+  #   "classId": "1031993",
+  #   "description": null,
+  #   "foreignClassId": null,
+  #   "foreignKeyAttributeNums": null,
+  #   "id": "1032002",
+  #   "keyAttributeNums": [2, 4],
+  #   "kind": "constraint",
+  #   "name": "pinned_items_object_id_comment_id_key",
+  #   "type": "u"
+  # }
+  def build_constraint(%{"type" => "u", "keyAttributeNums" => attr_nums, "name" => name}, _, _) do
+    %{type: :uniq, with: attr_nums, name: name}
   end
 
   @doc """

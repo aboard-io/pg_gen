@@ -8,6 +8,23 @@ defmodule EctoGen.TableGenerator do
       |> Enum.map(&Builder.build/1)
       |> Utils.deduplicate_associations()
 
+    unique_constraints =
+      attributes
+      |> Stream.map(& &1.constraints)
+      |> Stream.flat_map(& &1)
+      |> Stream.filter(&(&1.type == :uniq))
+      |> Stream.uniq_by(& &1.name)
+      |> Stream.map(fn uniq_constraint ->
+        named_fields =
+          uniq_constraint.with
+          |> Enum.map(fn field_index ->
+            ":#{Enum.at(attributes, field_index - 1).name}"
+          end)
+
+        Map.put(uniq_constraint, :with, named_fields)
+      end)
+      |> Enum.to_list()
+
     required_fields =
       built_attributes
       |> Enum.filter(&is_required/1)
@@ -21,7 +38,7 @@ defmodule EctoGen.TableGenerator do
 
     foreign_key_constraints =
       built_attributes
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         {:belongs_to, _, _, _} -> true
         {_, _, _, _} -> false
       end)
@@ -186,9 +203,9 @@ defmodule EctoGen.TableGenerator do
               |> cast(attrs, fields)
               |> validate_required(required_fields)
               #{Enum.map(foreign_key_constraints, fn field_name -> "|> foreign_key_constraint(#{field_name})" end) |> Enum.join("\n")}
-              # TODO should we support unique constraints in ecto
-              # or just let Postgres do it?
-              # |> unique_constraint(:email)
+              #{Enum.map(unique_constraints, fn %{with: with, name: name} -> 
+                "|> unique_constraint([#{Enum.join(with, ", ")}], name: \"#{name}\")"
+                end) |> Enum.join("\n")}
             end
 
           # Computed fields helpers
