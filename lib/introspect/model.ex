@@ -24,8 +24,6 @@ defmodule Introspection.Model do
         x -> [x]
       end)
 
-    enum_types = lift_types(tables)
-
     indexes_by_table_id =
       Enum.reduce(indexes, %{}, fn %{"classId" => table_id} = index, acc ->
         case Map.get(acc, table_id) do
@@ -46,9 +44,10 @@ defmodule Introspection.Model do
     functions =
       functions
       |> Enum.map(&process_function(&1, types))
-      |> sort_functions_by_type(tables)
 
-    %{tables: tables, enum_types: enum_types, functions: functions}
+    enum_types = lift_types(tables ++ functions)
+
+    %{tables: tables, enum_types: enum_types, functions: sort_functions_by_type(functions, tables)}
   end
 
   def from_introspection(result, _schema) do
@@ -462,8 +461,8 @@ defmodule Introspection.Model do
     end)
   end
 
-  def lift_types(tables) do
-    tables
+  def lift_types(tables_or_functions) do
+    tables_or_functions
     |> Enum.map(&get_enum_types/1)
     |> Enum.flat_map(fn
       x when is_list(x) -> x
@@ -472,7 +471,13 @@ defmodule Introspection.Model do
     |> Enum.uniq()
   end
 
-  defp get_enum_types(%{attributes: attrs}) when is_list(attrs) do
+  defp get_enum_types(%{args: args}) do
+    get_enum_types(args)
+  end
+  defp get_enum_types(%{attributes: attrs}) do
+    get_enum_types(attrs)
+  end
+  defp get_enum_types(attrs) when is_list(attrs) do
     Enum.filter(attrs, fn attr ->
       case attr.type[:enum_variants] do
         nil -> false
