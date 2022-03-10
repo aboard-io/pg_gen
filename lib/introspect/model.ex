@@ -39,7 +39,7 @@ defmodule Introspection.Model do
       )
       |> Stream.map(fn table -> add_indexes_to_table(table, indexes_by_table_id[table.id]) end)
       |> Stream.map(&Map.put(&1, :table_names, PgGen.Utils.get_table_names(&1.name)))
-      |> Enum.to_list()
+      |> Enum.sort(&(&1.name <= &2.name))
 
     functions =
       functions
