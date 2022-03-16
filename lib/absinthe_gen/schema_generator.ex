@@ -416,6 +416,7 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_input_filter(type) do
+    type = String.replace(type, ~r/^_/, "")
     """
     input_object :#{type}_filter do
       field :is_null, :boolean

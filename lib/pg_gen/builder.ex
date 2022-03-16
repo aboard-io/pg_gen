@@ -120,6 +120,19 @@ defmodule PgGen.Builder do
 
   def build_field(%{name: name}), do: name
 
+  def build_type(
+        %{
+          type: %{
+            name: name,
+            category: "A",
+            array_type: %{category: "E", enum_variants: enum_variants}
+          }
+        }
+      )
+      when not is_nil(enum_variants) and length(enum_variants) > 0 do
+    {:enum_array, String.replace(name, ~r/^[_]/, ""), enum_variants}
+  end
+
   def build_type(%{type: %{name: name, category: "A"}}) do
     {:array, String.replace(name, ~r/^[_]/, "")}
   end

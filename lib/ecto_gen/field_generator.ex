@@ -26,6 +26,15 @@ defmodule EctoGen.FieldGenerator do
     EctoGen.FieldGenerator.to_string({:field, name, type, options})
   end
 
+  def to_string({:field, name, {:enum_array, type, variants}, options}) do
+    options =
+      options
+      |> Keyword.put(:enum_array_type, true)
+      |> Keyword.put(:enum_variants, variants)
+
+    EctoGen.FieldGenerator.to_string({:field, name, type, options})
+  end
+
   def to_string({:field, name, type, options}) do
     case String.match?(type, ~r/(vector)$/) do
       true ->
@@ -48,12 +57,18 @@ defmodule EctoGen.FieldGenerator do
           end
 
         {is_array_type, options} = Keyword.pop(options, :array_type, false)
+        {is_enum_array_type, options} = Keyword.pop(options, :enum_array_type, false)
 
         type =
-          if is_array_type do
-            "{:array, #{type}}"
-          else
-            type
+          cond do
+            is_array_type ->
+              "{:array, #{type}}"
+
+            is_enum_array_type ->
+              "{:array, Ecto.Enum}, values: [#{Enum.map(options[:enum_variants], fn v -> ":#{v}" end) |> Enum.join(", ")}]"
+
+            true ->
+              type
           end
 
         "field :#{name}, #{type}"

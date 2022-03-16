@@ -479,10 +479,18 @@ defmodule Introspection.Model do
   end
   defp get_enum_types(attrs) when is_list(attrs) do
     Enum.filter(attrs, fn attr ->
+      is_enum_type =
       case attr.type[:enum_variants] do
         nil -> false
         _ -> true
       end
+      is_enum_array_type =
+        with %{enum_variants: enum_variants} <- Map.get(attr.type, :array_type) do
+          !!enum_variants
+        else _ ->
+          false
+        end
+        is_enum_type || is_enum_array_type
     end)
     |> Enum.map(fn attr -> attr.type end)
   end
