@@ -3,6 +3,7 @@ defmodule EctoGen.FieldGenerator do
     "text" => "string",
     "citext" => "string",
     "timestamptz" => "utc_datetime_usec",
+    "timestamp" => "utc_datetime",
     "uuid" => "Ecto.UUID",
     "jsonb" => "EctoJSON",
     "bool" => "boolean",
