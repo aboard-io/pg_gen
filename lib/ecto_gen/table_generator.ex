@@ -167,10 +167,14 @@ defmodule EctoGen.TableGenerator do
        use Ecto.Schema
        import Ecto.Changeset
 
+       @pg_columns [
+         #{Enum.map(attributes, &":#{&1.name}") |> Enum.join(", ")}
+       ]
+
+       @derive {Jason.Encoder, only: @pg_columns}
+
        alias #{app_name}.Repo
        alias #{app_name}.Repo.{#{aliases}}
-
-
 
        @schema_prefix "#{schema}"
        #{if primary_key_type, do: "@primary_key {:id, #{primary_key_type}, autogenerate: false}", else: "@primary_key false"}
@@ -214,9 +218,7 @@ defmodule EctoGen.TableGenerator do
           expects them as columns.
           \"\"\"
           def pg_columns() do
-            [
-            #{Enum.map(attributes, &":#{&1.name}") |> Enum.join(", ")}
-            ]
+            @pg_columns
           end
 
 
