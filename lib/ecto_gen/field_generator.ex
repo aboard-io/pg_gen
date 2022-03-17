@@ -45,6 +45,7 @@ defmodule EctoGen.FieldGenerator do
         """)
 
         ""
+        "field :#{name}, :string # <- this should be a vector"
 
       false ->
         {is_virtual, options} = Keyword.pop(options, :virtual, false)
