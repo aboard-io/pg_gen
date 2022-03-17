@@ -752,6 +752,9 @@ defmodule AbsintheGen.SchemaGenerator do
       {:array, type} ->
         "list_of(:#{FieldGenerator.type_map()[type] || Inflex.singularize(type)})"
 
+      {:enum_array, type, variants} ->
+        "list_of(:#{type})"
+
       "enum" ->
         ":#{type.name}"
 
