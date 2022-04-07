@@ -417,6 +417,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_input_filter(type) do
     type = String.replace(type, ~r/^_/, "")
+
     """
     input_object :#{type}_filter do
       field :is_null, :boolean
@@ -453,68 +454,84 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_insertable(%{insertable: true, name: name}) do
+  def generate_insertable(%{insertable: true, name: name}, overrides) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
     } = table_names = get_table_names(name)
 
-    input_name = "create_#{singular_underscore_table_name}_input"
-    generate_create_mutation(table_names, input_name)
-  end
+    mutation_name = "create_#{singular_underscore_table_name}"
 
-  def generate_insertable(_), do: ""
-
-  def generate_updatable(%{updatable: true, name: name} = table) do
-    primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
-
-    if is_nil(primary_key) do
-      ["", ""]
+    if mutation_name in overrides do
+      ""
     else
-      %{
-        singular_underscore_table_name: singular_underscore_table_name
-      } = table_names = get_table_names(name)
-
-      input_name = "update_#{singular_underscore_table_name}"
-      generate_update_mutation(table_names, input_name)
+      generate_create_mutation(table_names, mutation_name)
     end
   end
 
-  def generate_updatable(_), do: ""
+  def generate_insertable(_, _), do: ""
 
-  def generate_deletable(%{deletable: true, name: name} = table) do
-    primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
+  def generate_updatable(%{updatable: true, name: name} = table, overrides) do
+    %{
+      singular_underscore_table_name: singular_underscore_table_name
+    } = table_names = get_table_names(name)
 
-    if is_nil(primary_key) do
-      ["", ""]
+    mutation_name = "update_#{singular_underscore_table_name}"
+
+    if mutation_name in overrides do
+      ""
     else
-      %{
-        singular_underscore_table_name: singular_underscore_table_name,
-        singular_camelized_table_name: singular_camelized_table_name
-      } = get_table_names(name)
+      primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
 
-      type = process_type(primary_key.type)
-
-      """
-      field :delete_#{singular_underscore_table_name}, :delete_#{singular_underscore_table_name}_payload do
-        arg :id, non_null(#{type})
-        resolve &Resolvers.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}/3
+      if is_nil(primary_key) do
+        ["", ""]
+      else
+        generate_update_mutation(table_names, mutation_name)
       end
-      """
     end
   end
 
-  def generate_deletable(_), do: ""
+  def generate_updatable(_, _), do: ""
+
+  def generate_deletable(%{deletable: true, name: name} = table, overrides) do
+    %{
+      singular_underscore_table_name: singular_underscore_table_name,
+      singular_camelized_table_name: singular_camelized_table_name
+    } = get_table_names(name)
+
+    mutation_name = "delete_#{singular_underscore_table_name}"
+
+    if mutation_name in overrides do
+      ""
+    else
+      primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
+
+      if is_nil(primary_key) do
+        ["", ""]
+      else
+        type = process_type(primary_key.type)
+
+        """
+        field :#{mutation_name}, :#{mutation_name}_payload do
+          arg :id, non_null(#{type})
+          resolve &Resolvers.#{singular_camelized_table_name}.#{mutation_name}/3
+        end
+        """
+      end
+    end
+  end
+
+  def generate_deletable(_, _), do: ""
 
   def generate_create_mutation(
         %{
           singular_camelized_table_name: singular_camelized_table_name,
           singular_underscore_table_name: singular_underscore_table_name
         },
-        input_name
+        mutation_name
       ) do
     """
-    field :create_#{singular_underscore_table_name}, :create_#{singular_underscore_table_name}_payload do
-      arg :input, non_null(:#{input_name})
+    field :#{mutation_name}, :#{mutation_name}_payload do
+      arg :input, non_null(:#{mutation_name}_input)
       resolve &Resolvers.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}/3
     end
     """
@@ -522,15 +539,14 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_update_mutation(
         %{
-          singular_camelized_table_name: singular_camelized_table_name,
-          singular_underscore_table_name: singular_underscore_table_name
+          singular_camelized_table_name: singular_camelized_table_name
         },
-        input_name
+        mutation_name
       ) do
     """
-    field :update_#{singular_underscore_table_name}, :update_#{singular_underscore_table_name}_payload do
-      arg :input, non_null(:#{input_name}_input)
-      resolve &Resolvers.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}/3
+    field :#{mutation_name}, :#{mutation_name}_payload do
+      arg :input, non_null(:#{mutation_name}_input)
+      resolve &Resolvers.#{singular_camelized_table_name}.#{mutation_name}/3
     end
     """
   end

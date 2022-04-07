@@ -72,7 +72,7 @@ defmodule PgGen.Generator do
     scalar_filters = SchemaGenerator.generate_scalar_filters()
     scalar_and_enum_filters = scalar_filters <> "\n\n" <> enum_filters
 
-    schema_overrides =
+    query_overrides =
       Utils.maybe_apply(
         Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
         "query_extensions_overrides",
@@ -80,9 +80,17 @@ defmodule PgGen.Generator do
         []
       )
 
+    mutation_overrides =
+      Utils.maybe_apply(
+        Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
+        "mutations_overrides",
+        [],
+        []
+      )
+
     query_defs =
       tables
-      |> Enum.map(&SchemaGenerator.generate_queries(&1, schema_overrides))
+      |> Enum.map(&SchemaGenerator.generate_queries(&1, query_overrides))
       |> SchemaGenerator.inject_custom_queries(functions.queries, tables, app.camelized <> "Web")
       |> Enum.join("\n\n")
 
@@ -94,15 +102,15 @@ defmodule PgGen.Generator do
 
     create_mutations =
       tables
-      |> Enum.map(&SchemaGenerator.generate_insertable/1)
+      |> Enum.map(&SchemaGenerator.generate_insertable(&1, mutation_overrides))
 
     update_mutations =
       tables
-      |> Enum.map(&SchemaGenerator.generate_updatable/1)
+      |> Enum.map(&SchemaGenerator.generate_updatable(&1, mutation_overrides))
 
     delete_mutations =
       tables
-      |> Enum.map(&SchemaGenerator.generate_deletable/1)
+      |> Enum.map(&SchemaGenerator.generate_deletable(&1, mutation_overrides))
 
     {function_mutations, function_mutation_payloads} =
       SchemaGenerator.generate_custom_function_mutations(functions.mutations, tables)
