@@ -12,6 +12,7 @@ defmodule AbsintheGen.FieldGenerator do
     "bool" => "boolean",
     "int4" => "integer",
     "int8" => "integer",
+    "bytea" => "string",
     # for postgres functions that return void, we'll return a success object
     "void" => "success_object"
   }

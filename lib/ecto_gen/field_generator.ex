@@ -9,6 +9,7 @@ defmodule EctoGen.FieldGenerator do
     "bool" => "boolean",
     "int4" => "integer",
     "int8" => "integer",
+    "bytea" => "binary",
     "enum" => "Ecto.Enum"
   }
 
