@@ -314,9 +314,9 @@ defmodule AbsintheGen.ResolverGenerator do
         """
         def #{name}(_, #{if has_args, do: "args", else: "_"}, _) do
           case #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str}) do
-            {:error, error} ->
+            {:error, error = %{message: _}} ->
                 {:error, error}
-            {:error, "Query failed"} -> {:error, "Something went wrong"}
+            {:error, _} -> {:error, "Something went wrong"}
             result -> {:ok, result}
           end
         end
