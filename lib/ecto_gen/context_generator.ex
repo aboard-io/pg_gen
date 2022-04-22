@@ -298,6 +298,7 @@ defmodule EctoGen.ContextGenerator do
               case Repo.query("select #{schema}.#{name}(#{numbered_args})", [#{args_str}]) do
                 {:ok, %Postgrex.Result{ rows: #{return_match}}} ->
                   #{result_str}
+                {:error, %Postgrex.Error{} = error} -> {:error, error.postgres}
                 _ -> {:error, "Query failed"}
               end
             end
@@ -476,6 +477,7 @@ defmodule EctoGen.ContextGenerator do
         ]
       ) do
         {:ok, %Postgrex.Result{ rows: #{return_match}}} -> #{result_str}
+        {:error, %Postgrex.Error{} = error} -> {:error, error.postgres}
         _ -> {:error, "Query failed"}
       end
     end

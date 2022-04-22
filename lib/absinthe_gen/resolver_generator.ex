@@ -314,6 +314,8 @@ defmodule AbsintheGen.ResolverGenerator do
         """
         def #{name}(_, #{if has_args, do: "args", else: "_"}, _) do
           case #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str}) do
+            {:error, error} ->
+                {:error, error}
             {:error, "Query failed"} -> {:error, "Something went wrong"}
             result -> {:ok, result}
           end
@@ -332,7 +334,7 @@ defmodule AbsintheGen.ResolverGenerator do
   def custom_column_to_string(
         %{
           simplified_name: simplified_name
-        } = custom_column,
+        } = _custom_column,
         singular_camelized_table_name
       ) do
     """
