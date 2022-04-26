@@ -1462,6 +1462,7 @@ defmodule AbsintheGen.SchemaGenerator do
   def generate_custom_function_returning_record_to_string(
         %{
           name: name,
+          description: description,
           return_type: %{type: %{name: type_name, category: category}},
           is_stable: is_stable,
           is_strict: is_strict,
@@ -1496,6 +1497,9 @@ defmodule AbsintheGen.SchemaGenerator do
       field :#{name}, #{return_type_str} do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
+          #{unless is_nil(description), do: "description \"\"\"
+            #{description}
+          \"\"\""}
       end
       """
 
