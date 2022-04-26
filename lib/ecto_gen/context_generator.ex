@@ -15,6 +15,8 @@ defmodule EctoGen.ContextGenerator do
     "void"
   ]
 
+  @optional_field_missing ":__MISSING__"
+
   def generate({:enum_types, _}, _) do
     nil
   end
@@ -410,27 +412,49 @@ defmodule EctoGen.ContextGenerator do
           return_type: %{type: %{name: type_name}},
           arg_names: arg_names,
           returns_set: false,
-          args: arg_types
+          args: arg_types,
+          args_count: args_count,
+          args_with_default_count: args_with_default_count
         },
         schema,
         preloads
       ) do
+    strict_args_count = args_count - args_with_default_count
+    optional_arg_names = Enum.slice(arg_names, strict_args_count..args_count)
+
     simple_args_str = Enum.join(arg_names, ", ")
-    args_str = generate_args_str(arg_types)
+    args_str = generate_args_str(arg_types, optional_arg_names)
 
     repo_name = type_name |> Inflex.singularize() |> Macro.camelize()
-
-    arg_positions =
-      arg_names
-      |> Enum.with_index(fn _, index -> "$#{index + 1}" end)
-      |> Enum.join(", ")
 
     preload = Map.get(preloads, name, false)
     preload_string = if preload, do: "|> Repo.preload(#{Macro.to_string(preload)})", else: ""
 
     """
     def #{name}(#{simple_args_str}) do
-      case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+        #{if args_with_default_count == 0 do
+          arg_positions =
+            arg_names
+            |> Enum.with_index(fn _, index -> "$#{index + 1}" end)
+            |> Enum.join(", ")
+          """
+          case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+          """
+        else
+          arg_positions =
+            arg_names
+            |> Enum.with_index(fn _, index -> "\"$#{index + 1}\"" end)
+            |> Enum.join(", ")
+
+          """
+          missing_field_count = [#{simple_args_str}]
+            |> Enum.filter(fn val -> val == #{@optional_field_missing} end)
+            |> length()
+
+          case Repo.query("select * from #{schema}.#{name}(#\{Enum.slice([#{arg_positions}], 0..(#{args_count} - missing_field_count - 1)) |> Enum.join(", ")})", [#{args_str}]
+          |> Enum.filter(fn val -> val != #{@optional_field_missing} end)) do
+        """
+        end}
         {:ok, result} ->
           Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first() #{preload_string}
 
@@ -484,10 +508,14 @@ defmodule EctoGen.ContextGenerator do
     """
   end
 
-  defp generate_args_str(arg_types) do
+  defp generate_args_str(arg_types, optional_arg_names \\ []) do
     Enum.map(arg_types, fn
       %{type: %{name: "uuid"}, name: name} ->
-        "Ecto.UUID.dump!(#{name})"
+        if name in optional_arg_names do
+          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: Ecto.UUID.dump!(#{name}))"
+        else
+          "Ecto.UUID.dump!(#{name})"
+        end
 
       # if it's an array, will need to handle its contents
       # if it's a record, conevert it to a tuple
@@ -497,15 +525,27 @@ defmodule EctoGen.ContextGenerator do
         repo_name =
           PgGen.LocalConfig.get_app_name() <> ".Repo." <> names.singular_camelized_table_name
 
-        "Enum.map(#{name}, &#{repo_name}.to_pg_row/1)"
+        if name in optional_arg_names do
+          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: Enum.map(#{name}, &#{repo_name}.to_pg_row/1))"
+        else
+          "Enum.map(#{name}, &#{repo_name}.to_pg_row/1)"
+        end
 
       # if it's an array of UUIDs, run UUID.dump!
       %{type: %{array_type: %{name: "uuid"}}, name: name} ->
-        "Enum.map(#{name}, &Ecto.UUID.dump!/1)"
+        if name in optional_arg_names do
+          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: Enum.map(#{name}, &Ecto.UUID.dump!/1))"
+        else
+          "Enum.map(#{name}, &Ecto.UUID.dump!/1)"
+        end
 
       # if it's an enum, it comes in as an atom; postgrex will need a string
       %{type: %{category: "E"}, name: name} ->
-        "to_string(#{name})"
+        if name in optional_arg_names do
+          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: to_string(#{name}))"
+        else
+          "to_string(#{name})"
+        end
 
       %{name: name} ->
         name

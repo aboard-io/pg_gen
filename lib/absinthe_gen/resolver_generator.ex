@@ -14,6 +14,8 @@ defmodule AbsintheGen.ResolverGenerator do
     "void"
   ]
 
+  @optional_field_missing ":__MISSING__"
+
   def generate(name, table, functions) do
     {name, resolver_template(PgGen.LocalConfig.get_app_name(), name, table, functions)}
   end
@@ -82,7 +84,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-
+      
             case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections) do
               :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
               result -> {:ok, result}
@@ -218,23 +220,34 @@ defmodule AbsintheGen.ResolverGenerator do
           return_type: %{type: %{name: type_name}},
           arg_names: arg_names,
           is_stable: is_stable,
-          returns_set: true
+          returns_set: true,
+          args_count: args_count,
+          args_with_default_count: args_with_default_count
         },
         table
       ) do
     context_module_str = type_name |> Inflex.singularize() |> Macro.camelize()
     args_for_context = Enum.join(arg_names, ", ")
 
+    strict_args_count = args_count - args_with_default_count
+    required_arg_names = Enum.slice(arg_names, 0..(strict_args_count - 1))
+    optional_arg_names = Enum.slice(arg_names, strict_args_count..args_count)
+
     has_args = length(arg_names) > 0
+
+    argument_string = if is_stable, do: "args", else: "args.input"
 
     """
     def #{name}(_, args, _) do
       #{if has_args do
       """
       %{
-        #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-        } = #{if is_stable, do: "args", else: "args.input"}
+        #{Enum.map(required_arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
+        } = #{argument_string}
       """
+    end}
+    #{if length(optional_arg_names) > 0 do
+      Enum.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
     end}
       #{if table.selectable do
       """
@@ -264,7 +277,9 @@ defmodule AbsintheGen.ResolverGenerator do
         return_type: %{type: %{name: type_name}},
         arg_names: arg_names,
         is_stable: is_stable,
-        returns_set: false
+        returns_set: false,
+        args_count: args_count,
+        args_with_default_count: args_with_default_count
       }) do
     context_module_str = type_name |> Inflex.singularize() |> Macro.camelize()
 
@@ -273,14 +288,23 @@ defmodule AbsintheGen.ResolverGenerator do
 
     has_args = length(arg_names) > 0
 
+    strict_args_count = args_count - args_with_default_count
+    required_arg_names = Enum.slice(arg_names, 0..(strict_args_count - 1))
+    optional_arg_names = Enum.slice(arg_names, strict_args_count..args_count)
+
+    argument_string = if is_stable, do: "args", else: "args.input"
+
     """
     def #{name}(#{if is_stable, do: "_", else: ""}parent, #{if has_args, do: "args", else: "_"}, _) do
       #{if has_args do
       """
       %{
-        #{Enum.map(arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
-        } = #{if is_stable, do: "args", else: "args.input"}
+        #{Enum.map(required_arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
+        } = #{argument_string}
       """
+    end}
+    #{if length(optional_arg_names) > 0 do
+      Enum.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
     end}
       #{return_value}
     end
