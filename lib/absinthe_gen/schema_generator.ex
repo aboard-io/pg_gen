@@ -723,7 +723,8 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def generate_custom_function_mutations(mutation_functions, tables) do
-    module_name = PgGen.LocalConfig.get_app_name() <> "Web.Schema.Extends"
+    app_name = PgGen.LocalConfig.get_app_name()
+    module_name = app_name <> "Web.Schema.Extends"
     extensions_module = Module.concat(Elixir, module_name)
     overrides = Utils.maybe_apply(extensions_module, :mutations_overrides, [], [])
 
@@ -732,6 +733,11 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.filter(fn %{name: name} -> name not in overrides end)
       |> Enum.map(&generate_custom_function_query(&1, tables))
       |> sort_functions_and_inputs()
+
+    input_objects =
+      input_objects ++
+        (Module.concat(Elixir, "#{app_name}Web.CustomFunctionExtensions")
+         |> Utils.maybe_apply(:extensions, [], []))
 
     payloads =
       mutation_functions
@@ -1697,32 +1703,46 @@ defmodule AbsintheGen.SchemaGenerator do
         args_count,
         args_with_default_count
       ) do
-    arg_strs =
-      generate_custom_function_args_str(
-        args,
-        tables,
-        is_strict,
-        args_count,
-        args_with_default_count
-      )
+    app_name = PgGen.LocalConfig.get_app_name()
+    extensions_module = Module.concat(Elixir, "#{app_name}Web.CustomFunctionExtensions")
 
-    if !is_stable && length(args) > 0 do
-      field_strs =
-        arg_strs
-        |> String.split("\n")
-        |> Enum.map(fn
-          "arg " <> rest -> "field #{rest}"
-          _ -> ""
-        end)
-        |> Enum.join("\n")
+    input_object_name = "#{name}_input"
 
-      """
-      input_object :#{name}_input do
-        #{field_strs}
-      end
-      """
+    if input_object_name in Utils.maybe_apply(
+         extensions_module,
+         "overrides",
+         [],
+         []
+       ) do
+      ""
     else
-      arg_strs
+      arg_strs =
+        generate_custom_function_args_str(
+          args,
+          tables,
+          is_strict,
+          args_count,
+          args_with_default_count
+        )
+
+      if !is_stable && length(args) > 0 do
+        field_strs =
+          arg_strs
+          |> String.split("\n")
+          |> Enum.map(fn
+            "arg " <> rest -> "field #{rest}"
+            _ -> ""
+          end)
+          |> Enum.join("\n")
+
+        """
+        input_object :#{name}_input do
+          #{field_strs}
+        end
+        """
+      else
+        arg_strs
+      end
     end
   end
 
