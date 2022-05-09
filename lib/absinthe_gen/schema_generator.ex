@@ -270,6 +270,11 @@ defmodule AbsintheGen.SchemaGenerator do
 
       #{enum_types}
 
+      directive :client do
+        on [:field]
+        description "A directive for client-side resolution of data (used by apollo)"
+      end
+
       object :page_info do
         field :start_cursor, :cursor
         field :end_cursor, :cursor
