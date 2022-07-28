@@ -355,15 +355,17 @@ defmodule EctoGen.ContextGenerator do
           arg_names: arg_names,
           returns_set: true,
           args: arg_types
-        } = fun,
+        } = _fun,
         schema,
         table
       ) do
     has_args = length(arg_names) > 0
     args = Enum.join(arg_names, ", ")
 
-    pinned_args =
-      Enum.map(arg_names, fn name -> "^#{name}" end)
+    pinned_args_string =
+      generate_args_str(arg_types)
+      |> String.split(", ")
+      |> Enum.map(fn arg -> "^#{arg}" end)
       |> Enum.join(", ")
 
     repo_name = type_name |> Inflex.singularize() |> Macro.camelize()
@@ -377,7 +379,7 @@ defmodule EctoGen.ContextGenerator do
       """
       def #{name}(#{if has_args, do: "#{args},"} args) do
         from(t in Repo.#{repo_name},
-        join: s in fragment("select * from #{schema}.#{name}(#{question_marks})"#{if has_args, do: ", #{pinned_args}"}),
+        join: s in fragment("select * from #{schema}.#{name}(#{question_marks})"#{if has_args, do: ", #{pinned_args_string}"}),
         on: s.id == t.id)
           |> Repo.Filter.apply(args)
           |> Repo.all()
@@ -433,28 +435,22 @@ defmodule EctoGen.ContextGenerator do
     """
     def #{name}(#{simple_args_str}) do
         #{if args_with_default_count == 0 do
-          arg_positions =
-            arg_names
-            |> Enum.with_index(fn _, index -> "$#{index + 1}" end)
-            |> Enum.join(", ")
-          """
-          case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
-          """
-        else
-          arg_positions =
-            arg_names
-            |> Enum.with_index(fn _, index -> "\"$#{index + 1}\"" end)
-            |> Enum.join(", ")
-
-          """
-          missing_field_count = [#{simple_args_str}]
-            |> Enum.filter(fn val -> val == #{@optional_field_missing} end)
-            |> length()
-
-          case Repo.query("select * from #{schema}.#{name}(#\{Enum.slice([#{arg_positions}], 0..(#{args_count} - missing_field_count - 1)) |> Enum.join(", ")})", [#{args_str}]
-          |> Enum.filter(fn val -> val != #{@optional_field_missing} end)) do
-        """
-        end}
+      arg_positions = arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
+      """
+      case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+      """
+    else
+      arg_positions = arg_names |> Enum.with_index(fn _, index -> "\"$#{index + 1}\"" end) |> Enum.join(", ")
+    
+      """
+        missing_field_count = [#{simple_args_str}]
+          |> Enum.filter(fn val -> val == #{@optional_field_missing} end)
+          |> length()
+    
+        case Repo.query("select * from #{schema}.#{name}(#\{Enum.slice([#{arg_positions}], 0..(#{args_count} - missing_field_count - 1)) |> Enum.join(", ")})", [#{args_str}]
+        |> Enum.filter(fn val -> val != #{@optional_field_missing} end)) do
+      """
+    end}
         {:ok, result} ->
           Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first() #{preload_string}
 
