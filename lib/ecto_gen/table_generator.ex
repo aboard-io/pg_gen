@@ -137,6 +137,11 @@ defmodule EctoGen.TableGenerator do
 
           references =
             built_references
+            |> Enum.filter(fn
+              {:has_many, name, _, _} -> !(name in overrides)
+              {:many_to_many, name, _, _} -> !(name in overrides)
+              _ -> true
+            end)
             |> Enum.map(&FieldGenerator.to_string/1)
             |> Enum.sort()
             |> Enum.join("\n")
@@ -207,9 +212,7 @@ defmodule EctoGen.TableGenerator do
               |> cast(attrs, fields)
               |> validate_required(required_fields)
               #{Enum.map(foreign_key_constraints, fn field_name -> "|> foreign_key_constraint(#{field_name})" end) |> Enum.join("\n")}
-              #{Enum.map(unique_constraints, fn %{with: with, name: name} -> 
-                "|> unique_constraint([#{Enum.join(with, ", ")}], name: \"#{name}\")"
-                end) |> Enum.join("\n")}
+              #{Enum.map(unique_constraints, fn %{with: with, name: name} -> "|> unique_constraint([#{Enum.join(with, ", ")}], name: \"#{name}\")" end) |> Enum.join("\n")}
             end
 
           # Computed fields helpers
@@ -223,12 +226,11 @@ defmodule EctoGen.TableGenerator do
 
 
           def to_pg_row(%{} = map) do
-          [#{Enum.map(attributes, &"{:#{&1.name}, :#{
-            if &1.type.enum_variants == nil do
-              &1.type.name
-            else
-              "enum"
-            end}}") |> Enum.join(", ")}]
+          [#{Enum.map(attributes, &"{:#{&1.name}, :#{if &1.type.enum_variants == nil do
+       &1.type.name
+     else
+       "enum"
+     end}}") |> Enum.join(", ")}]
             |> Repo.Helper.cast_values_for_pg(map)
           end
           def computed_fields do

@@ -8,6 +8,7 @@ defmodule PgGen.Extend do
       contents
       |> Enum.filter(fn
         {:@, _, [{:override, _, _}]} -> false
+        {:@, _, [{:override, _, _, _}]} -> false
         {_, _, _} -> true
       end)
       |> Enum.map(&Macro.to_string/1)
@@ -75,12 +76,15 @@ defmodule PgGen.Extend do
         # @override :atom
         {_, _, [{:override, _, [fn_atom]}]}, _ ->
           to_string(fn_atom)
+        {_, _, [{:override, _, [fn_atom], _}]}, _ ->
+          to_string(fn_atom)
 
         # @override preceding a function call
         {_, _, [{:override, _, _}]}, index ->
           case Enum.at(contents, index + 1) do
             {:def, _, [{fn_atom, _, _} | _]} -> to_string(fn_atom)
             {:field, _, [fn_atom | _ ]} -> to_string(fn_atom)
+            {:has_many, _, [fn_atom | _ ]} -> to_string(fn_atom)
             {:input_object, _, [fn_atom | _ ]} -> to_string(fn_atom)
             {:object, _, [fn_atom | _ ]} -> to_string(fn_atom)
           end

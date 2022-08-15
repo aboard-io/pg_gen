@@ -15,6 +15,7 @@ defmodule PgGen.Schema do
       contents
       |> Enum.filter(fn
         {:@, _, [{:override, _, _}]} -> false
+        {:@, _, [{:override, _, _, _}]} -> false
         {:@, _, [{:omit, _, _}]} -> false
         _ -> true
       end)
