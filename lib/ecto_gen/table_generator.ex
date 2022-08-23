@@ -562,17 +562,25 @@ defmodule EctoGen.TableGenerator do
                 nil ->
                   query
 
-                {{_dir, field} = order_by, value} ->
+                {{dir, field} = order_by, value} ->
                   query
-                  |> where(^build_condition(field, %{less_than: value}))
+                  |> where(^build_condition(field, get_pagination_query_condition(dir, value)))
                   |> order_by(^sort_with_limit(order_by, opts))
               end
 
-            {{_dir, field} = order_by, value} ->
+            {{dir, field} = order_by, value} ->
               query
-              |> where(^build_condition(field, %{greater_than: value}))
+              |> where(^build_condition(field, get_pagination_query_condition(dir, value)))
               |> order_by(^sort_with_limit(order_by, opts))
           end
+        end
+
+        defp get_pagination_query_condition(:desc, value) do
+          %{less_than: value}
+        end
+
+        defp get_pagination_query_condition(:asc, value) do
+          %{greater_than: value}
         end
       end
     """
