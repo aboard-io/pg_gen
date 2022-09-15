@@ -362,17 +362,17 @@ defmodule EctoGen.TableGenerator do
           end
         end
 
-        defp condition(query, input) do 
+        defp condition(query, input) do
           where_condition =
-          if is_nil(input |> Map.values() |> List.first()) do
-            field = Map.keys(input) |> List.first()
-            dynamic([c], is_nil(field(c, ^field)))
-          else
-            Enum.into(input, Keyword.new())
-          end
-            query |> where(^where_condition)
-        end
+            if is_nil(input |> Map.values() |> List.first()) do
+              field = Map.keys(input) |> List.first()
+              dynamic([c], is_nil(field(c, ^field)))
+            else
+              Enum.into(input, Keyword.new())
+            end
 
+          query |> where(^where_condition)
+        end
 
         defp maybe_filter(query, opts) do
           case Map.get(opts, :filter) do
@@ -531,7 +531,7 @@ defmodule EctoGen.TableGenerator do
               order_opts
 
             # If we want the get the last N rows, flip the order in the query,
-            # then reverse results later (in the resolver?)
+            # then reverse results later (in AboardExWeb.Resolvers.Connections)
             num when is_integer(num) ->
               case order_opts do
                 [{:asc, column} | rest] -> [{:desc, column} | rest]
@@ -563,9 +563,11 @@ defmodule EctoGen.TableGenerator do
                   query
 
                 {{dir, field} = order_by, value} ->
+                  {final_dir, column} = order_by = sort_with_limit(order_by, opts)
+
                   query
-                  |> where(^build_condition(field, get_pagination_query_condition(dir, value)))
-                  |> order_by(^sort_with_limit(order_by, opts))
+                  |> where(^build_condition(field, get_pagination_query_condition(final_dir, value)))
+                  |> order_by(^order_by)
               end
 
             {{dir, field} = order_by, value} ->

@@ -893,10 +893,10 @@ defmodule AbsintheGen.SchemaGenerator do
             total_count: true,
             group_by: grouping
           } = args ->
-            args =
-              args
-              |> Map.delete(:first)
-              |> Map.delete(:last)
+            # args =
+            #   args
+            #   |> Map.delete(:first)
+            #   |> Map.delete(:last)
 
             query =
               from(queryable)
@@ -917,24 +917,32 @@ defmodule AbsintheGen.SchemaGenerator do
               ] ++
                 case length(query.joins) do
                   # I don't imagine we'll ever need more than 3, but we'll see.
-                  4 -> raise "Why are there so many joins happening here?"
-                  3 -> Enum.map(grouping, fn col ->
-                    dynamic([q, _, _, _, a], field(a, ^col))
-                  end)
-                  2 -> Enum.map(grouping, fn col ->
-                    dynamic([q, _, _, a], field(a, ^col))
-                  end)
-                  1 -> Enum.map(grouping, fn col ->
-                    dynamic([q, _, a], field(a, ^col))
-                  end)
-                  0 -> Enum.map(grouping, fn col ->
-                    dynamic([q, a], field(a, ^col))
-                  end)
+                  4 ->
+                    raise "Why are there so many joins happening here?"
+
+                  3 ->
+                    Enum.map(grouping, fn col ->
+                      dynamic([q, _, _, _, a], field(a, ^col))
+                    end)
+
+                  2 ->
+                    Enum.map(grouping, fn col ->
+                      dynamic([q, _, _, a], field(a, ^col))
+                    end)
+
+                  1 ->
+                    Enum.map(grouping, fn col ->
+                      dynamic([q, _, a], field(a, ^col))
+                    end)
+
+                  0 ->
+                    Enum.map(grouping, fn col ->
+                      dynamic([q, a], field(a, ^col))
+                    end)
                 end
 
             query
             |> group_by([q], ^groupings)
-
 
           queryable,
           %{
@@ -1020,28 +1028,46 @@ defmodule AbsintheGen.SchemaGenerator do
         # filter.ex so that we can easily tell if there are more records for
         # page_info. Here, we'll slice off the last record so the user gets the
         # expected number of records.
-        nodes = if has_first_or_last, do: Enum.slice(total_nodes, 0..-2), else: total_nodes
-
-        # If user wants last n records, Repo.Filter.apply is swapping asc/desc order
-        # to make the query work with a limit.
-        # Here we put the records back in the expected order
         nodes =
-          case is_integer(last) do
-            false ->
-              nodes
+          cond do
+            !is_nil(first) ->
+              if length(total_nodes) > first do
+                Enum.slice(total_nodes, 0..-1)
+              else
+                total_nodes
+              end
+
+            # If user wants last n records, Repo.Filter.apply is swapping asc/desc
+            # order to make the query work with a limit. Here we put the records
+            # back in the expected order
+            !is_nil(last) ->
+              if length(total_nodes) > last do
+                Enum.slice(total_nodes, 0..-2)
+                |> Enum.reverse()
+              else
+                total_nodes
+                |> Enum.reverse()
+              end
 
             true ->
-              if is_integer(first), do: nodes, else: Enum.reverse(nodes)
+              total_nodes
           end
 
         total_node_length = length(total_nodes)
         before_is_set = Map.get(args, :before) |> is_nil() |> Kernel.not()
         after_is_set = Map.get(args, :after) |> is_nil() |> Kernel.not()
-        {:ok, %{nodes: nodes, parent: parent, args: args, field_name: field_name,
+
+        {:ok,
+        %{
+          nodes: nodes,
+          parent: parent,
+          args: args,
+          field_name: field_name,
           page_info: %{
             has_next_page: (has_first_or_last && total_node_length > first) || before_is_set,
             has_previous_page: (has_first_or_last && total_node_length > last) || after_is_set
-        }}}
+          }
+        }}
       end
 
       def resolve_one(repo, field_name) do
@@ -1058,10 +1084,11 @@ defmodule AbsintheGen.SchemaGenerator do
           # connections to run queries in parallel, which can cause problems with
           # RLS (queries for items not yet committed)
           if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
-            result = parent
-            |> Map.get(field_name)
-            {:ok, result}
+            result =
+              parent
+              |> Map.get(field_name)
 
+            {:ok, result}
           else
             loader
             |> Dataloader.load(repo, {field_name, args}, parent)
@@ -1102,8 +1129,11 @@ defmodule AbsintheGen.SchemaGenerator do
 
           start_cursor_val =
             case nodes do
-              [] -> nil
-              [node | _] -> {order_by, Map.get(node, col)}
+              [] ->
+                nil
+
+              [node | _] ->
+                {order_by, Map.get(node, col)}
             end
 
           end_cursor_val =
@@ -1115,7 +1145,7 @@ defmodule AbsintheGen.SchemaGenerator do
           {:ok,
           Map.merge(page_info, %{
             start_cursor: start_cursor_val,
-            end_cursor: end_cursor_val,
+            end_cursor: end_cursor_val
           })}
         end
       end
