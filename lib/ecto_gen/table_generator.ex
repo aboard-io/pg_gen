@@ -562,8 +562,8 @@ defmodule EctoGen.TableGenerator do
                 nil ->
                   query
 
-                {{dir, field} = order_by, value} ->
-                  {final_dir, column} = order_by = sort_with_limit(order_by, opts)
+                {{_dir, field} = order_by, value} ->
+                  {final_dir, _column} = order_by = sort_with_limit(order_by, opts)
 
                   query
                   |> where(^build_condition(field, get_pagination_query_condition(final_dir, value)))

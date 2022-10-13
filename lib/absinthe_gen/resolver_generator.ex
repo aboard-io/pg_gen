@@ -458,7 +458,7 @@ defmodule AbsintheGen.ResolverGenerator do
     defmodule #{module_name}.ErrorHandlerDecorator do
       use Decorator.Define, handle: 0
 
-      def handle(body, context) do
+      def handle(body, _context) do
         quote do
           try do
             unquote(body)
