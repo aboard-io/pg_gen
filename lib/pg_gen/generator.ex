@@ -79,8 +79,10 @@ defmodule PgGen.Generator do
         [],
         []
       )
-      |> hd()
-      |> IO.inspect(label: "ALLOW LIST")
+      |> (fn
+            [] -> []
+            list -> hd(list)
+          end).()
 
     query_overrides =
       Utils.maybe_apply(
@@ -101,10 +103,13 @@ defmodule PgGen.Generator do
     query_defs =
       tables
       |> Enum.map(&SchemaGenerator.generate_queries(&1, query_overrides, allow_list))
-      |> IO.inspect(label: "NORMAL QUERIES")
-      |> SchemaGenerator.inject_custom_queries(functions.queries, tables, app.camelized <> "Web", allow_list)
+      |> SchemaGenerator.inject_custom_queries(
+        functions.queries,
+        tables,
+        app.camelized <> "Web",
+        allow_list
+      )
       |> Enum.join("\n\n")
-      |> IO.inspect(label: "QUERY DEFS")
 
     # TODO should support mutations here, too
     custom_record_defs = SchemaGenerator.generate_custom_records(functions.queries)
