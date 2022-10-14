@@ -72,6 +72,16 @@ defmodule PgGen.Generator do
     scalar_filters = SchemaGenerator.generate_scalar_filters()
     scalar_and_enum_filters = scalar_filters <> "\n\n" <> enum_filters
 
+    allow_list =
+      Utils.maybe_apply(
+        Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
+        "allow_list",
+        [],
+        []
+      )
+      |> hd()
+      |> IO.inspect(label: "ALLOW LIST")
+
     query_overrides =
       Utils.maybe_apply(
         Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
@@ -90,9 +100,11 @@ defmodule PgGen.Generator do
 
     query_defs =
       tables
-      |> Enum.map(&SchemaGenerator.generate_queries(&1, query_overrides))
-      |> SchemaGenerator.inject_custom_queries(functions.queries, tables, app.camelized <> "Web")
+      |> Enum.map(&SchemaGenerator.generate_queries(&1, query_overrides, allow_list))
+      |> IO.inspect(label: "NORMAL QUERIES")
+      |> SchemaGenerator.inject_custom_queries(functions.queries, tables, app.camelized <> "Web", allow_list)
       |> Enum.join("\n\n")
+      |> IO.inspect(label: "QUERY DEFS")
 
     # TODO should support mutations here, too
     custom_record_defs = SchemaGenerator.generate_custom_records(functions.queries)
@@ -102,18 +114,18 @@ defmodule PgGen.Generator do
 
     create_mutations =
       tables
-      |> Enum.map(&SchemaGenerator.generate_insertable(&1, mutation_overrides))
+      |> Enum.map(&SchemaGenerator.generate_insertable(&1, mutation_overrides, allow_list))
 
     update_mutations =
       tables
-      |> Enum.map(&SchemaGenerator.generate_updatable(&1, mutation_overrides))
+      |> Enum.map(&SchemaGenerator.generate_updatable(&1, mutation_overrides, allow_list))
 
     delete_mutations =
       tables
-      |> Enum.map(&SchemaGenerator.generate_deletable(&1, mutation_overrides))
+      |> Enum.map(&SchemaGenerator.generate_deletable(&1, mutation_overrides, allow_list))
 
     {function_mutations, function_mutation_payloads} =
-      SchemaGenerator.generate_custom_function_mutations(functions.mutations, tables)
+      SchemaGenerator.generate_custom_function_mutations(functions.mutations, tables, allow_list)
 
     mutation_strings =
       Enum.join(

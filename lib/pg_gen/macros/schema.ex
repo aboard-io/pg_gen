@@ -77,6 +77,10 @@ defmodule PgGen.Schema do
     end
   end
 
+  defmacro allow_list(contents) do
+    generate_strings(:allow_list, contents)
+  end
+
   defmacro import_types(contents) do
     generate_strings(:imports, contents)
   end

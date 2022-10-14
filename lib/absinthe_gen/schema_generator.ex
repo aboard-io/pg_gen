@@ -326,21 +326,26 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_queries(table, overrides) do
-    generate_selectable(table, overrides)
+  def generate_queries(table, overrides, allow_list) do
+    generate_selectable(table, overrides, allow_list)
   end
 
-  def generate_selectable(%{selectable: true, name: name} = table, overrides) do
+  def generate_selectable(%{selectable: true, name: name} = table, overrides, allow_list) do
     %{
       singular_camelized_table_name: singular_camelized_table_name,
       plural_underscore_table_name: plural_underscore_table_name,
       singular_underscore_table_name: singular_underscore_table_name
     } = get_table_names(name)
 
+    singular_name_allowed =
+      length(allow_list) == 0 || singular_underscore_table_name in allow_list
+
+    plural_name_allowed = length(allow_list) == 0 || plural_underscore_table_name in allow_list
+
     args = FieldGenerator.generate_args_for_object(table)
 
     """
-    #{if singular_underscore_table_name not in overrides do
+    #{if singular_name_allowed && singular_underscore_table_name not in overrides do
       """
       field :#{singular_underscore_table_name}, :#{singular_underscore_table_name} do
         arg :id, non_null(:uuid62)
@@ -348,7 +353,7 @@ defmodule AbsintheGen.SchemaGenerator do
       end
       """
     end}
-    #{if plural_underscore_table_name not in overrides do
+    #{if plural_name_allowed && plural_underscore_table_name not in overrides do
       """
       field :#{plural_underscore_table_name}, non_null(:#{plural_underscore_table_name}_connection) do
         #{args}
@@ -359,7 +364,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_selectable(_, _), do: ""
+  def generate_selectable(_, _, _), do: ""
 
   def generate_condition_and_filter_input(%{indexed_attrs: indexed_attrs, name: name} = table) do
     %{singular_underscore_table_name: singular_underscore_table_name} = get_table_names(name)
@@ -459,30 +464,30 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_insertable(%{insertable: true, name: name}, overrides) do
+  def generate_insertable(%{insertable: true, name: name}, overrides, allow_list) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
     } = table_names = get_table_names(name)
 
     mutation_name = "create_#{singular_underscore_table_name}"
 
-    if mutation_name in overrides do
+    if mutation_name in overrides || (length(allow_list) > 0 && mutation_name not in allow_list) do
       ""
     else
       generate_create_mutation(table_names, mutation_name)
     end
   end
 
-  def generate_insertable(_, _), do: ""
+  def generate_insertable(_, _, _), do: ""
 
-  def generate_updatable(%{updatable: true, name: name} = table, overrides) do
+  def generate_updatable(%{updatable: true, name: name} = table, overrides, allow_list) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
     } = table_names = get_table_names(name)
 
     mutation_name = "update_#{singular_underscore_table_name}"
 
-    if mutation_name in overrides do
+    if mutation_name in overrides || (length(allow_list) > 0 && mutation_name not in allow_list) do
       ""
     else
       primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
@@ -495,9 +500,9 @@ defmodule AbsintheGen.SchemaGenerator do
     end
   end
 
-  def generate_updatable(_, _), do: ""
+  def generate_updatable(_, _, _), do: ""
 
-  def generate_deletable(%{deletable: true, name: name} = table, overrides) do
+  def generate_deletable(%{deletable: true, name: name} = table, overrides, allow_list) do
     %{
       singular_underscore_table_name: singular_underscore_table_name,
       singular_camelized_table_name: singular_camelized_table_name
@@ -505,7 +510,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     mutation_name = "delete_#{singular_underscore_table_name}"
 
-    if mutation_name in overrides do
+    if mutation_name in overrides || (length(allow_list) > 0 && mutation_name not in allow_list) do
       ""
     else
       primary_key = Enum.find(table.attributes, fn attr -> !is_not_primary_key(attr) end)
@@ -525,7 +530,7 @@ defmodule AbsintheGen.SchemaGenerator do
     end
   end
 
-  def generate_deletable(_, _), do: ""
+  def generate_deletable(_, _, _), do: ""
 
   def generate_create_mutation(
         %{
@@ -727,7 +732,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_custom_function_mutations(mutation_functions, tables) do
+  def generate_custom_function_mutations(mutation_functions, tables, allow_list) do
     app_name = PgGen.LocalConfig.get_app_name()
     module_name = app_name <> "Web.Schema.Extends"
     extensions_module = Module.concat(Elixir, module_name)
@@ -736,6 +741,7 @@ defmodule AbsintheGen.SchemaGenerator do
     {functions, input_objects} =
       mutation_functions
       |> Enum.filter(fn %{name: name} -> name not in overrides end)
+      |> Enum.filter(fn %{name: name} -> length(allow_list) === 0 || name in allow_list end)
       |> Enum.map(&generate_custom_function_query(&1, tables))
       |> sort_functions_and_inputs()
 
@@ -779,7 +785,7 @@ defmodule AbsintheGen.SchemaGenerator do
       {:array, type} ->
         "list_of(:#{FieldGenerator.type_map()[type] || Inflex.singularize(type)})"
 
-      {:enum_array, type, variants} ->
+      {:enum_array, type, _variants} ->
         "list_of(:#{type})"
 
       "enum" ->
@@ -1397,7 +1403,7 @@ defmodule AbsintheGen.SchemaGenerator do
     Utils.maybe_apply(module, :subscriptions, [], []) |> Enum.join("\n\n")
   end
 
-  def inject_custom_queries(query_defs, functions, tables, module_prefix) do
+  def inject_custom_queries(query_defs, functions, tables, module_prefix, allow_list) do
     module = Module.concat(Elixir, "#{module_prefix}.Schema.Extends")
 
     functions =
@@ -1409,6 +1415,9 @@ defmodule AbsintheGen.SchemaGenerator do
           [],
           []
         )
+      end)
+      |> Enum.filter(fn %{name: name} ->
+        length(allow_list) == 0 || name in allow_list
       end)
 
     query_defs = query_defs ++ db_function_queries(functions, tables)
@@ -1539,8 +1548,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-            #{description}
-          \"\"\""}
+                        #{description}
+                      \"\"\""}
       end
       """
 
