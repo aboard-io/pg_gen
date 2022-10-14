@@ -109,7 +109,7 @@ defmodule AbsintheGen.FieldGenerator do
     "list_of(#{process_type(@type_map[type] || type, options)})"
   end
 
-  def process_type({:enum_array, enum_name, variants}, _options) do
+  def process_type({:enum_array, enum_name, _variants}, _options) do
     "list_of(:" <> (enum_name |> Inflex.singularize() |> Macro.underscore()) <> ")"
   end
 

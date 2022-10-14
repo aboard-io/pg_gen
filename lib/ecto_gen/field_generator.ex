@@ -45,7 +45,6 @@ defmodule EctoGen.FieldGenerator do
         #     https://hexdocs.pm/ecto/Ecto.Type.html
         """)
 
-        ""
         "field :#{name}, :string # <- this should be a vector"
 
       false ->
