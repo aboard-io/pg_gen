@@ -237,6 +237,14 @@ defmodule AbsintheGen.SchemaGenerator do
     extensions_module = Module.concat(Elixir, "#{module_name_web}.Schema.Extends")
     extensions_module_exists = Utils.does_module_exist(extensions_module)
 
+    [mutation_middleware_modules] =
+      Utils.maybe_apply(
+        extensions_module,
+        "mutation_middleware",
+        [],
+        [nil]
+      )
+
     [middleware_modules] =
       Utils.maybe_apply(
         extensions_module,
@@ -309,19 +317,25 @@ defmodule AbsintheGen.SchemaGenerator do
 
       #{dataloader}
 
-      #{if middleware_modules do
+      #{if mutation_middleware_modules do
       """
       def middleware(middleware, _field, %Absinthe.Type.Object{identifier: identifier})
         when identifier in [:mutation] do
-          middleware ++ [#{Enum.join(middleware_modules, ", ")}]
+          middleware ++ [#{Enum.join(mutation_middleware_modules, ", ")}]
       end
-    
-      def middleware(middleware, _field, _object) do
-        middleware
-      end
-    
       """
-    end}
+      end}
+      def middleware(middleware, _field, _object) do
+      #{if middleware_modules do
+      """
+        [#{Enum.join(middleware_modules, ", ")}] ++ middleware
+      """
+      else
+        """
+        middleware
+        """
+      end}
+      end
     end
     """
   end
