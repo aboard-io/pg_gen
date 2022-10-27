@@ -211,7 +211,7 @@ defmodule EctoGen.ContextGenerator do
       """
       def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}) do
         #{singular_lowercase}
-        |> Repo.delete()
+        |> Repo.delete(stale_error_field: :__meta__, stale_error_message: "You don't have permission to delete this #{singular_lowercase}")
       end
       """
     end
