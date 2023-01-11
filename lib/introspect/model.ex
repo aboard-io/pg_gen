@@ -47,7 +47,11 @@ defmodule Introspection.Model do
 
     enum_types = lift_types(tables ++ functions)
 
-    %{tables: tables, enum_types: enum_types, functions: sort_functions_by_type(functions, tables)}
+    %{
+      tables: tables,
+      enum_types: enum_types,
+      functions: sort_functions_by_type(functions, tables)
+    }
   end
 
   def from_introspection(result, _schema) do
@@ -414,14 +418,14 @@ defmodule Introspection.Model do
           acc
 
         true ->
-          %{attributes: attrs, table: %{id: id}} =
-            get_referenced_table(reference)
+          %{attributes: attrs, table: %{id: id}} = get_referenced_table(reference)
 
           new_reference = %{
             table:
               Map.merge(reference.parent_table, %{
                 attribute: reference,
-                has_composite_pk: Map.get(tables_by_id, reference.parent_table.id) |> Map.get(:has_composite_pk)
+                has_composite_pk:
+                  Map.get(tables_by_id, reference.parent_table.id) |> Map.get(:has_composite_pk)
               }),
             via: attrs
           }
@@ -474,23 +478,28 @@ defmodule Introspection.Model do
   defp get_enum_types(%{args: args}) do
     get_enum_types(args)
   end
+
   defp get_enum_types(%{attributes: attrs}) do
     get_enum_types(attrs)
   end
+
   defp get_enum_types(attrs) when is_list(attrs) do
     Enum.filter(attrs, fn attr ->
       is_enum_type =
-      case attr.type[:enum_variants] do
-        nil -> false
-        _ -> true
-      end
+        case attr.type[:enum_variants] do
+          nil -> false
+          _ -> true
+        end
+
       is_enum_array_type =
         with %{enum_variants: enum_variants} <- Map.get(attr.type, :array_type) do
           !!enum_variants
-        else _ ->
-          false
+        else
+          _ ->
+            false
         end
-        is_enum_type || is_enum_array_type
+
+      is_enum_type || is_enum_array_type
     end)
     |> Enum.map(fn attr -> attr.type end)
   end

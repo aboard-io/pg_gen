@@ -14,7 +14,9 @@ defmodule AbsintheGen.FieldGenerator do
     "int8" => "integer",
     "bytea" => "string",
     # for postgres functions that return void, we'll return a success object
-    "void" => "success_object"
+    "void" => "success_object",
+    "numeric" => "string",
+    "decimal" => "string"
   }
 
   @type_list Enum.map(@type_map, fn {k, _} -> k end)
