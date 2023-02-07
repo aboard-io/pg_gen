@@ -4,7 +4,6 @@ defmodule AbsintheGen.FieldGenerator do
   @type_map %{
     "text" => "string",
     "citext" => "string",
-    "tsvector" => "string",
     "timestamptz" => "datetime",
     "timestamp" => "datetime",
     "uuid" => "uuid62",
@@ -16,11 +15,17 @@ defmodule AbsintheGen.FieldGenerator do
     "bytea" => "string",
     # for postgres functions that return void, we'll return a success object
     "void" => "success_object",
-    "numeric" => "string",
-    "decimal" => "string"
+    "numeric" => "decimal",
+    "decimal" => "decimal",
+    # below are all incorrect; implementation of these types is up to the user,
+    # via overrides
+    "tsvector" => "string",
+    "geography" => "json",
+    "geometry" => "json"
   }
 
-  @type_list Enum.map(@type_map, fn {k, _} -> k end)
+  # filter out decimal since its type is itself
+  @type_list Enum.map(@type_map, fn {k, _} -> k end) |> Enum.filter(fn k -> k != "decimal" end)
 
   def to_string(attr, table \\ %{})
 

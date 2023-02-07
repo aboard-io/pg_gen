@@ -49,7 +49,7 @@ defmodule EctoGen.FieldGenerator do
         #     https://hexdocs.pm/ecto/Ecto.Type.html
         """)
 
-        "field :#{name}, :string # <- this should be a vector"
+        "field :#{name}, :string # <- this should be overridden"
 
       false ->
         {is_virtual, options} = Keyword.pop(options, :virtual, false)
