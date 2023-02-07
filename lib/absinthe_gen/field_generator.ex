@@ -10,6 +10,7 @@ defmodule AbsintheGen.FieldGenerator do
     "uuid" => "uuid62",
     "jsonb" => "json",
     "bool" => "boolean",
+    "int2" => "integer",
     "int4" => "integer",
     "int8" => "integer",
     "bytea" => "string",

@@ -7,6 +7,7 @@ defmodule EctoGen.FieldGenerator do
     "uuid" => "Ecto.UUID",
     "jsonb" => "EctoJSON",
     "bool" => "boolean",
+    "int2" => "integer",
     "int4" => "integer",
     "int8" => "integer",
     "bytea" => "binary",

@@ -8,6 +8,7 @@ defmodule AbsintheGen.ResolverGenerator do
     "uuid",
     "jsonb",
     "bool",
+    "int2",
     "int4",
     "int8",
     "enum",

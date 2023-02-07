@@ -10,6 +10,7 @@ defmodule AbsintheGen.SchemaGenerator do
     "uuid",
     "jsonb",
     "bool",
+    "int2",
     "int4",
     "int8",
     "enum",
@@ -324,17 +325,17 @@ defmodule AbsintheGen.SchemaGenerator do
           middleware ++ [#{Enum.join(mutation_middleware_modules, ", ")}]
       end
       """
-      end}
+    end}
       def middleware(middleware, _field, _object) do
       #{if middleware_modules do
       """
         [#{Enum.join(middleware_modules, ", ")}] ++ middleware
       """
-      else
-        """
-        middleware
-        """
-      end}
+    else
+      """
+      middleware
+      """
+    end}
       end
     end
     """
@@ -1562,8 +1563,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                        #{description}
-                      \"\"\""}
+                                    #{description}
+                                  \"\"\""}
       end
       """
 
