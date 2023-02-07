@@ -45,6 +45,10 @@ defmodule PgGen.Codegen do
       Introspection.run(authenticator_db_config, String.split(schema, ","))
       |> Introspection.Model.from_introspection(schema)
 
+    # FIXME valid_detail and geometry_dump end up in the tables query when added by postgis
+    # in theory we should be able to handle this more directly
+    tables = Enum.filter(tables, fn table -> !(table in ["valid_detail", "geometry_dump"]) end)
+
     ecto = Generator.generate_ecto(tables, functions, schema, app)
     absinthe = Generator.generate_absinthe(tables, enum_types, functions, schema, app)
 
