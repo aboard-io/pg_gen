@@ -66,8 +66,7 @@ defmodule PgGen.Utils do
             fk ->
               {relationship, table_name, queryable, opts} = tuple
 
-              {relationship, Builder.format_assoc(fk, table_name) |> Inflex.pluralize(),
-               queryable, opts}
+              {relationship, Builder.format_assoc(fk, table_name) |> pluralize(), queryable, opts}
           end
 
         false ->
@@ -121,14 +120,12 @@ defmodule PgGen.Utils do
                     _ ->
                       case get_foreign_key_from_tuple(tuple) do
                         nil ->
-                          {relationship,
-                           (table_name <> "_by_" <> join_through) |> Inflex.pluralize(),
+                          {relationship, (table_name <> "_by_" <> join_through) |> pluralize(),
                            queryable, opts}
 
                         fk ->
-                          {relationship,
-                           Builder.format_assoc(fk, table_name) |> Inflex.pluralize(), queryable,
-                           opts}
+                          {relationship, Builder.format_assoc(fk, table_name) |> pluralize(),
+                           queryable, opts}
                       end
                   end
 
@@ -150,7 +147,7 @@ defmodule PgGen.Utils do
 
                         fk ->
                           {relationship,
-                           (Builder.format_assoc(fk, table_name) |> Inflex.pluralize()) <>
+                           (Builder.format_assoc(fk, table_name) |> pluralize()) <>
                              "_by_" <> join_through, queryable, opts}
                       end
                   end
@@ -178,21 +175,17 @@ defmodule PgGen.Utils do
     end)
   end
 
-  def get_table_names(name) when name in ["movie", "movies"] do
-    singular = "movie"
-    plural = "movies"
-
-    %{
-      singular_camelized_table_name: Macro.camelize(singular),
-      plural_camelized_table_name: Macro.camelize(plural),
-      singular_underscore_table_name: Macro.underscore(singular),
-      plural_underscore_table_name: Macro.underscore(plural)
-    }
+  def pluralize(name) when name in ["movie", "movies"] do
+    "movies"
   end
 
+  def pluralize(name), do: Inflex.pluralize(name)
+
+  def singularize(name), do: Inflex.singularize(name)
+
   def get_table_names(name) do
-    singular = Inflex.singularize(name)
-    plural = Inflex.pluralize(name)
+    singular = singularize(name)
+    plural = pluralize(name)
 
     %{
       singular_camelized_table_name: Macro.camelize(singular),

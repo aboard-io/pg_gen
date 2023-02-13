@@ -79,21 +79,21 @@ defmodule AbsintheGen.FieldGenerator do
   end
 
   def to_string({:has_one, name, type, options}, _table) do
-    single_relation({:has_one, Inflex.singularize(name), type, options})
+    single_relation({:has_one, PgGen.Utils.singularize(name), type, options})
   end
 
   def to_string({:has_many, name, type, options} = field, table) do
-    type_str = "non_null(#{Inflex.pluralize(process_type(type, options))}_connection)"
+    type_str = "non_null(#{PgGen.Utils.pluralize(process_type(type, options))}_connection)"
     args_str = generate_args_for_object(table)
 
-    "field :#{Inflex.pluralize(name)}, #{type_str} do"
+    "field :#{PgGen.Utils.pluralize(name)}, #{type_str} do"
     |> process_options(field)
     |> append_line(args_str)
     |> with_end
   end
 
   def to_string({:many_to_many, name, type, options} = field, table) do
-    type_str = "non_null(#{Inflex.pluralize(process_type(type, options))}_connection)"
+    type_str = "non_null(#{PgGen.Utils.pluralize(process_type(type, options))}_connection)"
     args_str = generate_args_for_object(table)
 
     "field :#{name}, #{type_str} do"
@@ -118,11 +118,11 @@ defmodule AbsintheGen.FieldGenerator do
   end
 
   def process_type({:enum_array, enum_name, _variants}, _options) do
-    "list_of(:" <> (enum_name |> Inflex.singularize() |> Macro.underscore()) <> ")"
+    "list_of(:" <> (enum_name |> PgGen.Utils.singularize() |> Macro.underscore()) <> ")"
   end
 
   def process_type(type, _options) do
-    ":" <> (type |> Inflex.singularize() |> Macro.underscore())
+    ":" <> (type |> PgGen.Utils.singularize() |> Macro.underscore())
   end
 
   def wrap_non_null_type(type, options) do
@@ -230,7 +230,7 @@ defmodule AbsintheGen.FieldGenerator do
       process_type(type, options)
       |> wrap_non_null_type(options)
 
-    "field :#{Inflex.singularize(name)}, #{type_str} do"
+    "field :#{PgGen.Utils.singularize(name)}, #{type_str} do"
     |> process_options(field)
     |> with_end
   end

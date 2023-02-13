@@ -30,8 +30,8 @@ defmodule EctoGen.ContextGenerator do
         app_name,
         schema
       ) do
-    app_module_name = Inflex.singularize(app_name) |> Macro.camelize()
-    table_name = Inflex.singularize(name) |> Macro.camelize()
+    app_module_name = PgGen.Utils.singularize(app_name) |> Macro.camelize()
+    table_name = PgGen.Utils.singularize(name) |> Macro.camelize()
 
     module_name = "#{app_module_name}.Contexts.#{table_name}"
     extension_module_name = "#{module_name}.Extend"
@@ -92,8 +92,8 @@ defmodule EctoGen.ContextGenerator do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
-    get_name = "get_#{Inflex.singularize(lower_case_table_name)}!"
-    list_name = "list_#{Inflex.pluralize(lower_case_table_name)}"
+    get_name = "get_#{PgGen.Utils.singularize(lower_case_table_name)}!"
+    list_name = "list_#{PgGen.Utils.pluralize(lower_case_table_name)}"
 
     """
     #{if get_name not in overrides do
@@ -113,7 +113,7 @@ defmodule EctoGen.ContextGenerator do
 
     #{if list_name not in overrides do
       """
-      def list_#{Inflex.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
+      def list_#{PgGen.Utils.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
         from(#{table_name})
         |> Connections.query(__MODULE__).(
           Map.merge(args, %{
@@ -159,7 +159,7 @@ defmodule EctoGen.ContextGenerator do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
-    singular_lowercase = Inflex.singularize(lower_case_table_name)
+    singular_lowercase = PgGen.Utils.singularize(lower_case_table_name)
     create_name = "create_#{singular_lowercase}"
 
     if create_name in overrides do
@@ -181,7 +181,7 @@ defmodule EctoGen.ContextGenerator do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
-    singular_lowercase = Inflex.singularize(lower_case_table_name)
+    singular_lowercase = PgGen.Utils.singularize(lower_case_table_name)
     update_name = "update_#{singular_lowercase}"
 
     if update_name in overrides do
@@ -203,7 +203,7 @@ defmodule EctoGen.ContextGenerator do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
-    singular_lowercase = Inflex.singularize(lower_case_table_name)
+    singular_lowercase = PgGen.Utils.singularize(lower_case_table_name)
     delete_name = "delete_#{singular_lowercase}"
 
     if delete_name in overrides do
@@ -222,7 +222,7 @@ defmodule EctoGen.ContextGenerator do
 
   def get_table_names(name) do
     %{
-      table_name: name |> Inflex.singularize() |> Macro.camelize(),
+      table_name: name |> PgGen.Utils.singularize() |> Macro.camelize(),
       lower_case_table_name: String.downcase(name)
     }
   end
@@ -369,7 +369,7 @@ defmodule EctoGen.ContextGenerator do
       |> Enum.map(fn arg -> "^#{arg}" end)
       |> Enum.join(", ")
 
-    repo_name = type_name |> Inflex.singularize() |> Macro.camelize()
+    repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
 
     question_marks =
       arg_names
@@ -390,7 +390,7 @@ defmodule EctoGen.ContextGenerator do
       simple_args_str = Enum.join(arg_names, ", ")
       args_str = generate_args_str(arg_types)
 
-      repo_name = type_name |> Inflex.singularize() |> Macro.camelize()
+      repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
 
       arg_positions =
         arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
@@ -428,7 +428,7 @@ defmodule EctoGen.ContextGenerator do
     simple_args_str = Enum.join(arg_names, ", ")
     args_str = generate_args_str(arg_types, optional_arg_names)
 
-    repo_name = type_name |> Inflex.singularize() |> Macro.camelize()
+    repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
 
     preload = Map.get(preloads, name, false)
     preload_string = if preload, do: "|> Repo.preload(#{Macro.to_string(preload)})", else: ""

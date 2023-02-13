@@ -771,7 +771,7 @@ defmodule AbsintheGen.SchemaGenerator do
         %{return_type: %{type: %{name: name}}} when name in @scalar_types -> false
         _ -> true
       end)
-      |> Enum.map(fn %{return_type: %{type: %{name: name}}} -> Inflex.singularize(name) end)
+      |> Enum.map(fn %{return_type: %{type: %{name: name}}} -> PgGen.Utils.singularize(name) end)
       |> Enum.uniq()
       |> Enum.map(fn return_type_name -> generate_mutation_payload(return_type_name, "mutate") end)
 
@@ -798,7 +798,7 @@ defmodule AbsintheGen.SchemaGenerator do
   def process_type(%{name: _name} = type) do
     case Builder.build_type(%{type: type}) do
       {:array, type} ->
-        "list_of(:#{FieldGenerator.type_map()[type] || Inflex.singularize(type)})"
+        "list_of(:#{FieldGenerator.type_map()[type] || PgGen.Utils.singularize(type)})"
 
       {:enum_array, type, _variants} ->
         "list_of(:#{type})"
@@ -837,7 +837,7 @@ defmodule AbsintheGen.SchemaGenerator do
       tables
       |> filter_accessible(functions)
       |> Enum.map(fn %{name: name} ->
-        singular_camelized_table = name |> Inflex.singularize() |> Macro.camelize()
+        singular_camelized_table = name |> PgGen.Utils.singularize() |> Macro.camelize()
 
         "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Connections.data(Contexts.#{singular_camelized_table}))"
       end)
@@ -1501,7 +1501,7 @@ defmodule AbsintheGen.SchemaGenerator do
       if Map.get(return_type, :composite_type, false) do
         "PgFunctions"
       else
-        Macro.camelize(type_name) |> Inflex.singularize()
+        Macro.camelize(type_name) |> PgGen.Utils.singularize()
       end
 
     input_object_or_args =
@@ -1516,7 +1516,7 @@ defmodule AbsintheGen.SchemaGenerator do
       )
 
     {"""
-     field :#{name}, #{Inflex.pluralize(FieldGenerator.process_type(type_name, []))}_connection do
+     field :#{name}, #{PgGen.Utils.pluralize(FieldGenerator.process_type(type_name, []))}_connection do
       #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
        #{connection_arg_str}
        resolve &Resolvers.#{resolver_module_str}.#{name}/3
@@ -1540,12 +1540,12 @@ defmodule AbsintheGen.SchemaGenerator do
     if category == "E" do
       generate_custom_function_returning_scalar_to_string(function, tables)
     else
-      resolver_module_str = Macro.camelize(type_name) |> Inflex.singularize()
+      resolver_module_str = Macro.camelize(type_name) |> PgGen.Utils.singularize()
 
       return_type_str =
         if is_stable,
           do: FieldGenerator.process_type(type_name, []),
-          else: ":mutate_#{Inflex.singularize(type_name)}_payload"
+          else: ":mutate_#{PgGen.Utils.singularize(type_name)}_payload"
 
       input_object_or_args =
         generate_input_object_or_args(
@@ -1563,8 +1563,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                    #{description}
-                                  \"\"\""}
+                                                                                    #{description}
+                                                                                  \"\"\""}
       end
       """
 
@@ -1627,7 +1627,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
         if normalized_name in table_names do
           """
-          arg :#{name}, #{process_type(Map.put(type, :name, "create_#{Inflex.singularize(normalized_name)}_input"))}
+          arg :#{name}, #{process_type(Map.put(type, :name, "create_#{PgGen.Utils.singularize(normalized_name)}_input"))}
           """
         else
           if is_strict && index < strict_args_count do
@@ -1676,7 +1676,7 @@ defmodule AbsintheGen.SchemaGenerator do
       app = PgGen.LocalConfig.get_app_name()
 
       """
-      object :#{Inflex.pluralize(name)}_connection do
+      object :#{PgGen.Utils.pluralize(name)}_connection do
         field :nodes, non_null(list_of(non_null(:#{name})))
         field :page_info, non_null(:page_info) do
           resolve Connections.resolve_page_info()
