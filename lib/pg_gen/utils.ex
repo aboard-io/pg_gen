@@ -178,6 +178,18 @@ defmodule PgGen.Utils do
     end)
   end
 
+  def get_table_names(name) when name in ["movie", "movies"] do
+    singular = "movie"
+    plural = "movies"
+
+    %{
+      singular_camelized_table_name: Macro.camelize(singular),
+      plural_camelized_table_name: Macro.camelize(plural),
+      singular_underscore_table_name: Macro.underscore(singular),
+      plural_underscore_table_name: Macro.underscore(plural)
+    }
+  end
+
   def get_table_names(name) do
     singular = Inflex.singularize(name)
     plural = Inflex.pluralize(name)
