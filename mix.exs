@@ -26,7 +26,7 @@ defmodule PgGen.MixProject do
       {:jason, "~> 1.2"},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:ex_unit_notifier, "~> 1.2", only: :test},
-      {:inflex, "~> 2.0.0"},
+      {:inflex, github: "adampash/inflex", ref: "d44151a3f0c2decedcdf16d01a11d32d799819e1"},
       {:postgrex, ">= 0.0.0"},
       {:flow, "~> 1.0"},
       {:file_system, "~> 0.2.10"},
