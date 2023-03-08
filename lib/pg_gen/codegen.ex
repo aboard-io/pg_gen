@@ -237,13 +237,7 @@ defmodule PgGen.Codegen do
 
     schema_module = Module.concat(Elixir, app.camelized <> "Web.Schema")
 
-    graphql_schema_file =
-      Absinthe.Schema.to_sdl(schema_module)
-      # Remove the first line of text, which breaks some
-      # graphql parsers
-      |> String.split("\n")
-      |> tl()
-      |> Enum.join("\n")
+    graphql_schema_file = Absinthe.Schema.to_sdl(schema_module)
 
     if PgGen.CodeRegistry.is_stale(state.output_path, graphql_schema_file) do
       File.write!(state.output_path, graphql_schema_file)

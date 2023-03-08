@@ -30,7 +30,7 @@ defmodule PgGen.MixProject do
       {:postgrex, ">= 0.0.0"},
       {:flow, "~> 1.0"},
       {:file_system, "~> 0.2.10"},
-      {:absinthe, "~> 1.6"},
+      {:absinthe, "~> 1.7.1"},
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
       # deps used by the generated code
