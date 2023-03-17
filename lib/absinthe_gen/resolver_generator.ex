@@ -399,7 +399,10 @@ defmodule AbsintheGen.ResolverGenerator do
 
           %Absinthe.Blueprint.Document.Fragment.Spread{name: name} ->
             info.fragments[name].selections
-            |> Enum.map(fn %{schema_node: %{identifier: identifier}} -> identifier end)
+            |> Enum.map(fn
+              %{schema_node: %{identifier: identifier}} -> identifier
+              _ -> nil
+            end)
         end)
         |> List.flatten()
         |> Enum.filter(&(&1 in computed_fields))
