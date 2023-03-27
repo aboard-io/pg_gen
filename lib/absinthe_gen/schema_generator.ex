@@ -322,7 +322,7 @@ defmodule AbsintheGen.SchemaGenerator do
       """
       def middleware(middleware, _field, %Absinthe.Type.Object{identifier: identifier})
         when identifier in [:mutation] do
-          middleware ++ [#{Enum.join(mutation_middleware_modules, ", ")}]
+          [#{Enum.join(Map.get(mutation_middleware_modules, :unresolved, []), ", ")}] ++ middleware ++ [#{Enum.join(Map.get(mutation_middleware_modules, :resolved, []), ", ")}]
       end
       """
     end}
@@ -1563,8 +1563,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                    #{description}
-                                                                                  \"\"\""}
+                                                                                                #{description}
+                                                                                              \"\"\""}
       end
       """
 
