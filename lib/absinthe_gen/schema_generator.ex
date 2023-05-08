@@ -883,12 +883,30 @@ defmodule AbsintheGen.SchemaGenerator do
   end
 
   def connections_resolver_template(app_name) do
+    extensions_module = Module.concat(Elixir, "#{app_name}Web.Schema.Extends")
+
+    [cacheable_fields] = Utils.maybe_apply(extensions_module, :cacheable_fields, [], [nil])
+
+    [cache_ttl] = Utils.maybe_apply(extensions_module, :cache_ttl, [], [nil])
+
     """
     defmodule #{app_name}Web.Resolvers.Connections do
       import Absinthe.Resolution.Helpers, only: [on_load: 2]
       import Ecto.Query
       alias #{app_name}Web.Resolvers.Utils
       alias #{app_name}.Repo
+      alias #{app_name}.Contexts.Cache
+
+    #{if cacheable_fields do
+      "@cache_ttl #{cache_ttl || :timer.minutes(10)}"
+    else
+      ""
+    end}
+    #{if cacheable_fields do
+      "@cacheable_fields [#{Enum.map(cacheable_fields, fn field -> ":#{field}" end) |> Enum.join(", ")}]"
+    else
+      ""
+    end}
 
       @doc \"\"\"
       This function sets up the dataloader source.
@@ -995,50 +1013,112 @@ defmodule AbsintheGen.SchemaGenerator do
           %{nodes: nodes, parent: nil}, args, _ ->
             return_nodes(nodes, nil, args, field_name)
 
+          #{if cacheable_fields do
+      """
+          # if the user is nil, check the cache first. if it's not there, resolve
+          parent, args, %{context: %{current_user: nil}} = info ->
+            cache_key = {field_name, parent.id, args}
+    
+            do_cache_check(field_name, cache_key, fn ->
+              resolve_many_with_dataloader({repo, field_name}, parent, args, info, cache_key)
+            end)
+      """
+    else
+    end}
+
           # this is the default case for associations. it resolves at the top level, 
           # then passes down the nodes, parent, and args to the children so they
           # can handle nodes, page_info, and total_count
-          parent, args, %{context: %{loader: loader}} = info ->
-            if Utils.has_nodes?(info) do
-              computed_selections = Utils.get_computed_selections(info, repo)
-
-              args =
-                Map.put(args, :__selections, %{
-                  computed_selections: computed_selections
-                })
-
-              # If nodes are already loaded, return them. This will be rare,
-              # but is occasionally helpful. E.g., dataloader will spawn new
-              # connections to run queries in parallel, which can cause problems with
-              # RLS (queries for items not yet committed)
-              if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
-                parent
-                |> Map.get(field_name)
-                |> return_nodes(parent, args, field_name)
-              else
-                loader
-                |> Dataloader.load(repo, {field_name, args}, parent)
-                |> on_load(fn loader_with_data ->
-                  Dataloader.get(
-                    loader_with_data,
-                    repo,
-                    {field_name, args},
-                    parent
-                  )
-                  |> Enum.map(
-                    &Utils.cast_computed_selections(
-                      &1,
-                      repo.computed_fields_with_types(computed_selections)
-                    )
-                  )
-                  |> return_nodes(parent, args, field_name)
-                end)
-              end
-            else
-              return_nodes([], parent, args, field_name)
-            end
+          parent, args, info ->
+            resolve_many_with_dataloader({repo, field_name}, parent, args, info)
         end
       end
+
+      #{if cacheable_fields do
+      """
+      defp do_cache_check(field_name, cache_key, fun) do
+      case field_name do
+        field_name when field_name in @cacheable_fields ->
+          if value = Cache.get(cache_key) do
+            value
+          else
+            fun.()
+          end
+    
+        _ ->
+          # fun.()
+          if Application.get_env(:aboard_ex, :env) == :dev do
+            {:error,
+             "\#{field_name} is not a cacheable field; see the cacheable_fields macro in #{extensions_module}"}
+          else
+            {:error, "\#{field_name} can't be accessed by a logged-out user"}
+          end
+      end
+      end
+      """
+    else
+      ""
+    end}
+
+    defp resolve_many_with_dataloader(
+         {repo, field_name},
+         parent,
+         args,
+         %{context: %{loader: loader}} = info,
+         cache_key \\\\ nil
+       ) do
+    if Utils.has_nodes?(info) do
+      computed_selections = Utils.get_computed_selections(info, repo)
+
+      args =
+        Map.put(args, :__selections, %{
+          computed_selections: computed_selections
+        })
+
+      # If nodes are already loaded, return them. This will be rare,
+      # but is occasionally helpful. E.g., dataloader will spawn new
+      # connections to run queries in parallel, which can cause problems with
+      # RLS (queries for items not yet committed)
+      if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
+        parent
+        |> Map.get(field_name)
+        |> return_nodes(parent, args, field_name)
+      else
+        loader
+        |> Dataloader.load(repo, {field_name, args}, parent)
+        |> on_load(fn loader_with_data ->
+          result =
+            Dataloader.get(
+              loader_with_data,
+              repo,
+              {field_name, args},
+              parent
+            )
+            |> Enum.map(
+              &Utils.cast_computed_selections(
+                &1,
+                repo.computed_fields_with_types(computed_selections)
+              )
+            )
+            |> return_nodes(parent, args, field_name)
+
+          #{if cacheable_fields do
+      """
+      if cache_key do
+        Cache.put(cache_key, result, ttl: @cache_ttl)
+      end
+      """
+    else
+      ""
+    end}
+
+          result
+        end)
+      end
+      else
+        return_nodes([], parent, args, field_name)
+      end
+    end
 
       def return_nodes(total_nodes, parent, args, field_name \\\\ nil) do
         first = Map.get(args, :first)
@@ -1092,44 +1172,77 @@ defmodule AbsintheGen.SchemaGenerator do
       end
 
       def resolve_one(repo, field_name) do
-        fn parent, args, %{context: %{loader: loader}} = info ->
-          computed_selections = Utils.get_computed_selections(info, repo)
-
-          args =
-            Map.put(args, :__selections, %{
-              computed_selections: computed_selections
-            })
-
-          # If nodes are already loaded, return them. This will be rare,
-          # but is occasionally helpful. E.g., dataloader will spawn new
-          # connections to run queries in parallel, which can cause problems with
-          # RLS (queries for items not yet committed)
-          if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
-            result =
-              parent
-              |> Map.get(field_name)
-
-            {:ok, result}
-          else
-            loader
-            |> Dataloader.load(repo, {field_name, args}, parent)
-            |> on_load(fn loader_with_data ->
-              result =
-                Dataloader.get(
-                  loader_with_data,
-                  repo,
-                  {field_name, args},
-                  parent
-                )
-                |> Utils.cast_computed_selections(
-                  repo.computed_fields_with_types(computed_selections)
-                )
-
-              {:ok, result}
-            end)
-          end
+        fn
+          #{if cacheable_fields do
+      """
+      # if the user is nil, check the cache first. if it's not there, resolve
+      parent, args, %{context: %{current_user: nil}} = info ->
+        cache_key = {field_name, parent.id, args}
+    
+        do_cache_check(field_name, cache_key, fn ->
+          resolve_one_with_dataloader({repo, field_name}, parent, args, info, cache_key)
+        end)
+      """
+    else
+      ""
+    end}
+          parent, args, info ->
+            resolve_one_with_dataloader({repo, field_name}, parent, args, info)
         end
       end
+
+      defp resolve_one_with_dataloader(
+         {repo, field_name},
+         parent,
+         args,
+         %{context: %{loader: loader}} = info,
+         cache_key \\\\ nil
+       ) do
+        computed_selections = Utils.get_computed_selections(info, repo)
+
+        args =
+          Map.put(args, :__selections, %{
+            computed_selections: computed_selections
+          })
+
+        # If nodes are already loaded, return them. This will be rare,
+        # but is occasionally helpful. E.g., dataloader will spawn new
+        # connections to run queries in parallel, which can cause problems with
+        # RLS (queries for items not yet committed)
+        if Ecto.assoc_loaded?(Map.get(parent, field_name)) do
+          result =
+            parent
+            |> Map.get(field_name)
+
+          {:ok, result}
+        else
+          loader
+          |> Dataloader.load(repo, {field_name, args}, parent)
+          |> on_load(fn loader_with_data ->
+            result =
+              Dataloader.get(
+                loader_with_data,
+                repo,
+                {field_name, args},
+                parent
+              )
+              |> Utils.cast_computed_selections(repo.computed_fields_with_types(computed_selections))
+
+            #{if cacheable_fields do
+      """
+      if cache_key do
+      Cache.put(cache_key, {:ok, result}, ttl: @cache_ttl)
+      end
+      """
+    else
+      ""
+    end}
+
+            {:ok, result}
+          end)
+        end
+      end
+
 
       @doc \"\"\"
       Usage in an Absinthe schema:
@@ -1563,8 +1676,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                                #{description}
-                                                                                              \"\"\""}
+                                                                                                                                                                                                                                                                                                                                                                                    #{description}
+                                                                                                                                                                                                                                                                                                                                                                                  \"\"\""}
       end
       """
 

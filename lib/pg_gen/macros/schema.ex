@@ -10,7 +10,6 @@ defmodule PgGen.Schema do
       |> Enum.concat(PgGen.Extend.stringify_omits(contents))
       |> Enum.uniq()
 
-
     contents =
       contents
       |> Enum.filter(fn
@@ -75,6 +74,14 @@ defmodule PgGen.Schema do
         resolve #{unquote(stringified)}
       """
     end
+  end
+
+  defmacro cacheable_fields(contents) do
+    generate_strings(:cacheable_fields, contents)
+  end
+
+  defmacro cache_ttl(contents) do
+    generate_strings(:cache_ttl, contents)
   end
 
   defmacro allow_list(contents) do
