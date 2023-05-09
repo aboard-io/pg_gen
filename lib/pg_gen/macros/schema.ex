@@ -76,6 +76,10 @@ defmodule PgGen.Schema do
     end
   end
 
+  defmacro cacheable_root_queries(contents) do
+    generate_strings(:cacheable_root_queries, contents)
+  end
+
   defmacro cacheable_fields(contents) do
     generate_strings(:cacheable_fields, contents)
   end

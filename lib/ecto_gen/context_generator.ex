@@ -73,7 +73,7 @@ defmodule EctoGen.ContextGenerator do
        #{if table.selectable, do: "alias #{app_module_name}Web.Resolvers.Utils"}
        #{if table.selectable, do: "alias #{app_module_name}Web.Resolvers.Connections"}
 
-         #{generate_selectable(table, functions.computed_columns_by_table[name], overrides, schema)}
+         #{generate_selectable(table, functions.computed_columns_by_table[name], overrides, schema, app_module_name)}
          #{generate_insertable(table, overrides)}
          #{generate_updatable(table, overrides)}
          #{generate_deletable(table, overrides)}
@@ -88,17 +88,59 @@ defmodule EctoGen.ContextGenerator do
     end
   end
 
-  def generate_selectable(%{selectable: true, name: name}, computed_columns, overrides, schema) do
+  def generate_selectable(
+        table,
+        computed_columns,
+        overrides,
+        schema,
+        app_module_name \\ ""
+      )
+
+  def generate_selectable(
+        %{selectable: true, name: name},
+        computed_columns,
+        overrides,
+        schema,
+        app_module_name
+      ) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
     get_name = "get_#{PgGen.Utils.singularize(lower_case_table_name)}!"
     list_name = "list_#{PgGen.Utils.pluralize(lower_case_table_name)}"
 
+    singular_table_name = lower_case_table_name |> Inflex.singularize()
+
+    is_cacheable =
+      AbsintheGen.ResolverGenerator.root_query_is_cacheable(
+        app_module_name,
+        singular_table_name
+      )
+
     """
     #{if get_name not in overrides do
       """
-      def #{get_name}(id, computed_selections \\\\ []) do
+      #{if is_cacheable do
+        cache_ttl = AbsintheGen.ResolverGenerator.get_cache_ttl(app_module_name)
+        """
+        def #{get_name}(id, computed_selections \\\\ [], context \\\\ %{})
+      
+        def #{get_name}(id, computed_selections, %{current_user: nil}) do
+          cache_key = {:#{singular_table_name}, id}
+      
+          if value = #{app_module_name}.Contexts.Cache.get(cache_key) do
+            value
+          else
+            result = #{get_name}(id, computed_selections, nil)
+            #{app_module_name}.Contexts.Cache.put(cache_key, result, ttl: #{cache_ttl})
+            result
+          end
+        end
+        """
+      else
+        ""
+      end}
+      def #{get_name}(id, computed_selections#{if is_cacheable, do: ",_", else: "\\\\ []"}) do
         case from(#{table_name})
         |> with_computed_columns(computed_selections)
         |> Repo.get(id) do
@@ -153,7 +195,7 @@ defmodule EctoGen.ContextGenerator do
     """
   end
 
-  def generate_selectable(_, _, _, _), do: ""
+  def generate_selectable(_, _, _, _, _), do: ""
 
   def generate_insertable(%{selectable: true, name: name}, overrides) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =

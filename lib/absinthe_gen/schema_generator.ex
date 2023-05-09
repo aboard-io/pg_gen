@@ -1303,35 +1303,59 @@ defmodule AbsintheGen.SchemaGenerator do
 
           %{parent: parent, args: args, field_name: field_name},
           _args,
-          %{context: %{loader: loader}} ->
-            association = parent.__struct__.__schema__(:association, field_name)
-            group_by = Keyword.keys(Map.get(association, :join_keys, []))
+          %{context: %{current_user: nil}} = info ->
+            cache_key = {field_name, parent.id, :count, args}
 
-            args =
-              args
-              |> Map.put(:total_count, true)
-              |> Map.put(:group_by, group_by)
-
-            loader
-            |> Dataloader.load(repo, {field_name, args}, parent)
-            |> on_load(fn loader_with_data ->
-              result =
-                Dataloader.get(
-                  loader_with_data,
-                  repo,
-                  {field_name, args},
-                  parent
-                )
-
-              # FIXME This works _okay_; just returns arrays of 1s, which we can
-              # get the length of later. In a perfect world, it would just return
-              # the number, but I'm punting on this b/c I don't want to spend more
-              # time fighting w/ecto on this one. I know how the sql should look,
-              # but am struggling with the ecto.
-              {:ok, length(result)}
+            do_cache_check(field_name, cache_key, fn ->
+              resolve_count_with_dataloader({repo, field_name}, parent, args, info, cache_key)
             end)
+
+          %{parent: parent, args: args, field_name: field_name}, _args, info ->
+            resolve_count_with_dataloader({repo, field_name}, parent, args, info)
+
         end
       end
+
+      def resolve_count_with_dataloader(
+        {repo, field_name},
+        parent,
+        args,
+        %{context: %{loader: loader}},
+        cache_key \\\\ nil
+      ) do
+        association = parent.__struct__.__schema__(:association, field_name)
+        group_by = Keyword.keys(Map.get(association, :join_keys, []))
+
+        args =
+          args
+          |> Map.put(:total_count, true)
+          |> Map.put(:group_by, group_by)
+
+        loader
+        |> Dataloader.load(repo, {field_name, args}, parent)
+        |> on_load(fn loader_with_data ->
+          result =
+            Dataloader.get(
+              loader_with_data,
+              repo,
+              {field_name, args},
+              parent
+            )
+            |> length
+
+          if cache_key do
+            Cache.put(cache_key, {:ok, result}, ttl: @cache_ttl)
+          end
+
+          # FIXME This works _okay_; just returns arrays of 1s, which we can
+          # get the length of later. In a perfect world, it would just return
+          # the number, but I'm punting on this b/c I don't want to spend more
+          # time fighting w/ecto on this one. I know how the sql should look,
+          # but am struggling with the ecto.
+          {:ok, result}
+        end)
+      end
+
     end
     """
     |> Utils.format_code!()
@@ -1676,8 +1700,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                                                                                                                                                                                                                                                                                                                    #{description}
-                                                                                                                                                                                                                                                                                                                                                                                  \"\"\""}
+                                                                                                                                                                                                                                                                                                                                                                                                            #{description}
+                                                                                                                                                                                                                                                                                                                                                                                                          \"\"\""}
       end
       """
 

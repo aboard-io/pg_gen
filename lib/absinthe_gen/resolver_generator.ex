@@ -77,6 +77,8 @@ defmodule AbsintheGen.ResolverGenerator do
 
         #{if selectable do
         select_name = "#{singular_underscore_table_name}"
+        is_cacheable = root_query_is_cacheable(app_name, select_name)
+      
         unless extensions_module_exists && select_name in extensions_module.overrides() do
           """
           def #{singular_underscore_table_name}(_, %{id: id}, info) do
@@ -86,7 +88,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
       
-            case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections) do
+          case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections#{if is_cacheable, do: ", info.context", else: ""}) do
               :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
               result -> {:ok, result}
             end
@@ -99,6 +101,10 @@ defmodule AbsintheGen.ResolverGenerator do
 
         #{if selectable do
         select_all_name = "#{name}"
+        is_cacheable = root_query_is_cacheable(app_name, select_all_name)
+        if is_cacheable do
+          raise "You cannot cache a root query that returns a list of #{select_all_name}; we only support caching root queries that return a single entity requiring an id argument"
+        end
         unless extensions_module_exists && select_all_name in extensions_module.overrides() do
           """
           def #{name}(_, args, info) do
@@ -207,6 +213,22 @@ defmodule AbsintheGen.ResolverGenerator do
       end
       """
     end
+  end
+
+  def root_query_is_cacheable(app_name, root_query_name) do
+    case Utils.maybe_apply(schema_extensions_module(app_name), :cacheable_root_queries, [], []) do
+      [] -> false
+      [cacheable_root_queries] -> String.to_atom(root_query_name) in cacheable_root_queries
+    end
+  end
+
+  def get_cache_ttl(app_name) do
+    [cache_ttl] = Utils.maybe_apply(schema_extensions_module(app_name), :cache_ttl, [], [nil])
+    cache_ttl
+  end
+
+  defp schema_extensions_module(app_name) do
+    Module.concat(Elixir, "#{app_name}Web.Schema.Extends")
   end
 
   def custom_function_to_string(%{returns_set: true} = function, table),
