@@ -145,7 +145,7 @@ defmodule EctoGen.ContextGenerator do
         |> with_computed_columns(computed_selections)
         |> Repo.get(id) do
           nil -> :error
-        result -> result |> Utils.cast_computed_selection(
+        result -> result |> Utils.cast_computed_selections(
             #{table_name}.computed_fields_with_types(computed_selections)
           )
         end

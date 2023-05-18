@@ -459,7 +459,11 @@ defmodule AbsintheGen.ResolverGenerator do
         end
       end
 
-      # If it's not a tuple, we can leave it as is
+      # if it's a uuid, cast it
+      def cast_computed_selection(result, :_uuid), do: Ecto.UUID.cast!(result)
+      def cast_computed_selection(result, :uuid), do: Ecto.UUID.cast!(result)
+
+      # If it matches none of these, just return the result
       def cast_computed_selection(result, _), do: result
 
       @doc \"\"\"

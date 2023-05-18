@@ -21,17 +21,22 @@ defmodule PgGen.Builder do
           attr
       ) do
     {relation, type} =
-      if return_type.type.name in EctoGen.FieldGenerator.type_list() do
-        {:field, build_type(return_type)}
-      else
-        relation_type =
-          if returns_set do
-            :has_many
-          else
-            :has_one
-          end
+      cond do
+        return_type.type.name in EctoGen.FieldGenerator.type_list() ->
+          {:field, build_type(return_type)}
 
-        {relation_type, table_name_to_queryable(return_type.type.name)}
+        get_in(return_type, [:type, :array_type, :name]) in EctoGen.FieldGenerator.type_list() ->
+          {:field, build_type(return_type)}
+
+        true ->
+          relation_type =
+            if returns_set do
+              :has_many
+            else
+              :has_one
+            end
+
+          {relation_type, table_name_to_queryable(return_type.type.name)}
       end
 
     {relation, simplified_name, type,
