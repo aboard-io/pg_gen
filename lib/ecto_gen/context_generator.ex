@@ -74,8 +74,8 @@ defmodule EctoGen.ContextGenerator do
        #{if table.selectable, do: "alias #{app_module_name}Web.Resolvers.Connections"}
 
          #{generate_selectable(table, functions.computed_columns_by_table[name], overrides, schema, app_module_name)}
-         #{generate_insertable(table, overrides)}
-         #{generate_updatable(table, overrides)}
+         #{generate_insertable(table, overrides, preloads)}
+         #{generate_updatable(table, overrides, preloads)}
          #{generate_deletable(table, overrides)}
          #{function_strings_for_table}
          #{computed_columns}
@@ -197,49 +197,75 @@ defmodule EctoGen.ContextGenerator do
 
   def generate_selectable(_, _, _, _, _), do: ""
 
-  def generate_insertable(%{selectable: true, name: name}, overrides) do
+  def generate_insertable(%{selectable: true, name: name}, overrides, preloads) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
     singular_lowercase = PgGen.Utils.singularize(lower_case_table_name)
     create_name = "create_#{singular_lowercase}"
 
+    preload = Map.get(preloads, create_name, false)
+
     if create_name in overrides do
       ""
     else
       """
       def create_#{singular_lowercase}(attrs) do
+        #{if preload, do: "result = ", else: ""}
         %#{table_name}{}
         |> #{table_name}.changeset(attrs)
         |> Repo.insert(returning: true)
+        #{if preload do
+        """
+        case result do
+          {:ok, record} -> {:ok, Repo.preload(record, #{Macro.to_string(preload)})}
+          error -> error
+        end
+        """
+      else
+        ""
+      end}
       end
       """
     end
   end
 
-  def generate_insertable(_, _), do: ""
+  def generate_insertable(_, _, _), do: ""
 
-  def generate_updatable(%{selectable: true, name: name}, overrides) do
+  def generate_updatable(%{selectable: true, name: name}, overrides, preloads) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
       get_table_names(name)
 
     singular_lowercase = PgGen.Utils.singularize(lower_case_table_name)
     update_name = "update_#{singular_lowercase}"
 
+    preload = Map.get(preloads, update_name, false)
+
     if update_name in overrides do
       ""
     else
       """
       def update_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, attrs) do
+        #{if preload, do: "result = ", else: ""}
         #{singular_lowercase}
         |> #{table_name}.changeset(attrs)
         |> Repo.update(returning: true)
+        #{if preload do
+        """
+        case result do
+          {:ok, record} -> {:ok, Repo.preload(record, #{Macro.to_string(preload)})}
+          error -> error
+        end
+        """
+      else
+        ""
+      end}
       end
       """
     end
   end
 
-  def generate_updatable(_, _), do: ""
+  def generate_updatable(_, _, _), do: ""
 
   def generate_deletable(%{selectable: true, name: name}, overrides) do
     %{table_name: table_name, lower_case_table_name: lower_case_table_name} =
