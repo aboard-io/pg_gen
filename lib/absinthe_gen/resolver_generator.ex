@@ -460,8 +460,8 @@ defmodule AbsintheGen.ResolverGenerator do
       end
 
       # if it's a uuid, cast it unless it's nil
-      def cast_computed_selection(nil, :_uuid), do: Ecto.UUID.cast!(result)
-      def cast_computed_selection(nil, :uuid), do: Ecto.UUID.cast!(result)
+      def cast_computed_selection(nil, :_uuid), do: nil
+      def cast_computed_selection(nil, :uuid), do: nil
       def cast_computed_selection(result, :_uuid), do: Ecto.UUID.cast!(result)
       def cast_computed_selection(result, :uuid), do: Ecto.UUID.cast!(result)
 
