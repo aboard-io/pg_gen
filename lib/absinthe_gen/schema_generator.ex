@@ -830,7 +830,7 @@ defmodule AbsintheGen.SchemaGenerator do
       |> is_nil)
   end
 
-  def generate_dataloader(tables, functions) do
+  def generate_dataloader(tables, functions, plugins \\ []) do
     app_name = PgGen.LocalConfig.get_app_name()
 
     sources =
@@ -853,7 +853,7 @@ defmodule AbsintheGen.SchemaGenerator do
     end
 
     def plugins do
-      [Absinthe.Middleware.Dataloader] ++ Absinthe.Plugin.defaults()
+      [Absinthe.Middleware.Dataloader#{if plugins, do: ",#{Enum.join(plugins, ", ")}", else: ""}] ++ Absinthe.Plugin.defaults()
     end
     """
   end
@@ -1700,8 +1700,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                                                                                                                                                                                                                                                                                                                                            #{description}
-                                                                                                                                                                                                                                                                                                                                                                                                          \"\"\""}
+                                                                                                                                                                                                                                                                                                                                                                                                                        #{description}
+                                                                                                                                                                                                                                                                                                                                                                                                                      \"\"\""}
       end
       """
 

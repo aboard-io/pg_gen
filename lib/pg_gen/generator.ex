@@ -72,9 +72,11 @@ defmodule PgGen.Generator do
     scalar_filters = SchemaGenerator.generate_scalar_filters()
     scalar_and_enum_filters = scalar_filters <> "\n\n" <> enum_filters
 
+    extend_module = Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends")
+
     allow_list =
       Utils.maybe_apply(
-        Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
+        extend_module,
         "allow_list",
         [],
         []
@@ -86,7 +88,7 @@ defmodule PgGen.Generator do
 
     query_overrides =
       Utils.maybe_apply(
-        Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
+        extend_module,
         "query_extensions_overrides",
         [],
         []
@@ -94,7 +96,7 @@ defmodule PgGen.Generator do
 
     mutation_overrides =
       Utils.maybe_apply(
-        Module.concat(Elixir, "#{app.camelized}Web.Schema.Extends"),
+        extend_module,
         "mutations_overrides",
         [],
         []
@@ -146,9 +148,17 @@ defmodule PgGen.Generator do
       function_mutation_payloads
       |> Enum.join("\n\n")
 
+    [plugin_modules] =
+      Utils.maybe_apply(
+        extend_module,
+        "plugins",
+        [],
+        [nil]
+      )
+
     dataloader_strings =
       tables
-      |> SchemaGenerator.generate_dataloader(functions)
+      |> SchemaGenerator.generate_dataloader(functions, plugin_modules)
 
     table_names =
       tables

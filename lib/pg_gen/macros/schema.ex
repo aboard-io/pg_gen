@@ -100,6 +100,10 @@ defmodule PgGen.Schema do
     generate_strings(:middleware, contents)
   end
 
+  defmacro plugins(contents) do
+    generate_strings(:plugins, contents)
+  end
+
   defmacro mutation_middleware(contents) do
     generate_strings(:mutation_middleware, contents)
   end
