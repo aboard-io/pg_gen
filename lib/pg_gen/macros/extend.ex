@@ -12,10 +12,11 @@ defmodule PgGen.Extend do
         {_, _, _} -> true
       end)
       |> Enum.map(&Macro.to_string/1)
-      # TODO this is pretty brittle, should prob change at some point. It's
-      # cosmetic b/c Macro.to_string/1 will return defs like `def(foo(bar)) do`
-      # |> Enum.map(&String.replace(&1, "def(", "def "))
-      # |> Enum.map(&String.replace(&1, ")) do", ") do"))
+
+    # TODO this is pretty brittle, should prob change at some point. It's
+    # cosmetic b/c Macro.to_string/1 will return defs like `def(foo(bar)) do`
+    # |> Enum.map(&String.replace(&1, "def(", "def "))
+    # |> Enum.map(&String.replace(&1, ")) do", ") do"))
 
     quote do
       Module.register_attribute(__MODULE__, :override, accumulate: true)
@@ -47,7 +48,9 @@ defmodule PgGen.Extend do
     generate_code(to_string(name) <> "_enums", contents)
   end
 
-  def generate_code(name, contents) when is_atom(name), do: generate_code(to_string(name), contents)
+  def generate_code(name, contents) when is_atom(name),
+    do: generate_code(to_string(name), contents)
+
   def generate_code(name, contents) do
     overrides_stringified = stringify_overrides(contents)
 
@@ -71,43 +74,45 @@ defmodule PgGen.Extend do
   end
 
   def stringify_overrides(contents) do
-      contents
-      |> Enum.with_index(fn
-        # @override :atom
-        {_, _, [{:override, _, [fn_atom]}]}, _ ->
-          to_string(fn_atom)
-        {_, _, [{:override, _, [fn_atom], _}]}, _ ->
-          to_string(fn_atom)
+    contents
+    |> Enum.with_index(fn
+      # @override :atom
+      {_, _, [{:override, _, [fn_atom]}]}, _ ->
+        to_string(fn_atom)
 
-        # @override preceding a function call
-        {_, _, [{:override, _, _}]}, index ->
-          case Enum.at(contents, index + 1) do
-            {:def, _, [{fn_atom, _, _} | _]} -> to_string(fn_atom)
-            {:field, _, [fn_atom | _ ]} -> to_string(fn_atom)
-            {:has_many, _, [fn_atom | _ ]} -> to_string(fn_atom)
-            {:input_object, _, [fn_atom | _ ]} -> to_string(fn_atom)
-            {:object, _, [fn_atom | _ ]} -> to_string(fn_atom)
-          end
+      {_, _, [{:override, _, [fn_atom], _}]}, _ ->
+        to_string(fn_atom)
 
-        _, _ ->
-          ""
-      end)
-      |> Enum.filter(&(&1 != ""))
-      |> Enum.uniq()
+      # @override preceding a function call
+      {_, _, [{:override, _, _}]}, index ->
+        case Enum.at(contents, index + 1) do
+          {:def, _, [{fn_atom, _, _} | _]} -> to_string(fn_atom)
+          {:field, _, [fn_atom | _]} -> to_string(fn_atom)
+          {:has_many, _, [fn_atom | _]} -> to_string(fn_atom)
+          {:many_to_many, _, [fn_atom | _]} -> to_string(fn_atom)
+          {:input_object, _, [fn_atom | _]} -> to_string(fn_atom)
+          {:object, _, [fn_atom | _]} -> to_string(fn_atom)
+        end
+
+      _, _ ->
+        ""
+    end)
+    |> Enum.filter(&(&1 != ""))
+    |> Enum.uniq()
   end
 
   def stringify_omits(contents) do
-      contents
-      |> Enum.with_index(fn
-        # @override :atom
-        {_, _, [{:omit, _, [omissions]}]}, _ ->
-          Enum.map(omissions, &to_string/1)
+    contents
+    |> Enum.with_index(fn
+      # @override :atom
+      {_, _, [{:omit, _, [omissions]}]}, _ ->
+        Enum.map(omissions, &to_string/1)
 
-        _, _ ->
-          ""
-      end)
-      |> Enum.filter(&(&1 != ""))
-      |> List.flatten()
-      |> Enum.uniq()
+      _, _ ->
+        ""
+    end)
+    |> Enum.filter(&(&1 != ""))
+    |> List.flatten()
+    |> Enum.uniq()
   end
 end
