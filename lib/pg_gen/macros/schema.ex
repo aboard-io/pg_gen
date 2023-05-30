@@ -108,6 +108,14 @@ defmodule PgGen.Schema do
     generate_strings(:mutation_middleware, contents)
   end
 
+  defmacro exclude_fields_from_create(contents) do
+    generate_strings(:exclude_fields_from_create, contents)
+  end
+
+  defmacro exclude_fields_from_update(contents) do
+    generate_strings(:exclude_fields_from_update, contents)
+  end
+
   def get_quoted_contents(contents) do
     case contents do
       {:__block__, [], contents} -> contents

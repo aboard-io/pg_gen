@@ -21,7 +21,8 @@ defmodule AbsintheGen.SchemaGenerator do
         %{name: name, attributes: attributes} = table,
         computed_fields,
         tables,
-        _schema
+        _schema,
+        opts
       ) do
     app_name = PgGen.LocalConfig.get_app_name()
 
@@ -152,7 +153,12 @@ defmodule AbsintheGen.SchemaGenerator do
       conditions_and_filters <> "\n\n" <> order_by_enums <> additional_extensions
 
     mutation_input_objects_and_payloads =
-      generate_mutation_inputs_and_payloads(table, extensions_module, extensions_module_exists)
+      generate_mutation_inputs_and_payloads(
+        table,
+        extensions_module,
+        extensions_module_exists,
+        opts.excluded_input_fields
+      )
 
     {name,
      simple_types_template(
@@ -576,12 +582,27 @@ defmodule AbsintheGen.SchemaGenerator do
     """
   end
 
-  def generate_mutation_inputs_and_payloads(table, extensions_module, extensions_module_exists) do
+  def generate_mutation_inputs_and_payloads(
+        table,
+        extensions_module,
+        extensions_module_exists,
+        excluded_input_fields
+      ) do
     {create_input_object, create_payload} =
-      generate_insertable_input_and_payload(table, extensions_module, extensions_module_exists)
+      generate_insertable_input_and_payload(
+        table,
+        extensions_module,
+        extensions_module_exists,
+        excluded_input_fields.create
+      )
 
     {update_input_object, update_payload} =
-      generate_updatable_input_and_payload(table, extensions_module, extensions_module_exists)
+      generate_updatable_input_and_payload(
+        table,
+        extensions_module,
+        extensions_module_exists,
+        excluded_input_fields.update
+      )
 
     delete_payload = generate_deletable_payload(table)
 
@@ -592,7 +613,8 @@ defmodule AbsintheGen.SchemaGenerator do
   def generate_insertable_input_and_payload(
         %{insertable: true, name: name} = table,
         extensions_module,
-        extensions_module_exists
+        extensions_module_exists,
+        excluded_fields
       ) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
@@ -605,7 +627,8 @@ defmodule AbsintheGen.SchemaGenerator do
         input_name,
         table.attributes,
         extensions_module,
-        extensions_module_exists
+        extensions_module_exists,
+        excluded_fields
       )
 
     payload = generate_mutation_payload(singular_underscore_table_name, "create")
@@ -613,12 +636,13 @@ defmodule AbsintheGen.SchemaGenerator do
     {input_object, payload}
   end
 
-  def generate_insertable_input_and_payload(_, _, _), do: {"", ""}
+  def generate_insertable_input_and_payload(_, _, _, _), do: {"", ""}
 
   def generate_updatable_input_and_payload(
         %{updatable: true, name: name} = table,
         extensions_module,
-        extensions_module_exists
+        extensions_module_exists,
+        excluded_fields
       ) do
     %{
       singular_underscore_table_name: singular_underscore_table_name
@@ -631,7 +655,8 @@ defmodule AbsintheGen.SchemaGenerator do
         input_name,
         table.attributes,
         extensions_module,
-        extensions_module_exists
+        extensions_module_exists,
+        excluded_fields
       )
 
     payload = generate_mutation_payload(singular_underscore_table_name, "update")
@@ -639,7 +664,7 @@ defmodule AbsintheGen.SchemaGenerator do
     {input_object, payload}
   end
 
-  def generate_updatable_input_and_payload(_, _, _), do: {"", ""}
+  def generate_updatable_input_and_payload(_, _, _, _), do: {"", ""}
 
   def generate_deletable_payload(%{deletable: true, name: name}) do
     %{
@@ -655,12 +680,20 @@ defmodule AbsintheGen.SchemaGenerator do
         input_object_name,
         attributes,
         extensions_module,
-        extensions_module_exists
+        extensions_module_exists,
+        excluded_fields
       ) do
+    excluded_input_fields =
+      Map.get(excluded_fields, :global, []) ++
+        Map.get(excluded_fields, String.to_atom(input_object_name), [])
+
     fields =
       attributes
-      |> Enum.filter(fn %{insertable: insertable} -> insertable end)
-      |> Enum.filter(fn %{name: name} ->
+      |> Stream.filter(fn %{insertable: insertable} -> insertable end)
+      |> Stream.filter(fn %{name: name} ->
+        String.to_atom(name) not in excluded_input_fields
+      end)
+      |> Stream.filter(fn %{name: name} ->
         if extensions_module_exists &&
              name in Utils.maybe_apply(
                extensions_module,
@@ -700,14 +733,22 @@ defmodule AbsintheGen.SchemaGenerator do
         input_object_name,
         attributes,
         extensions_module,
-        extensions_module_exists
+        extensions_module_exists,
+        excluded_fields
       ) do
+    excluded_input_fields =
+      Map.get(excluded_fields, :global, []) ++
+        Map.get(excluded_fields, String.to_atom(input_object_name <> "_patch"), [])
+
     primary_key = Enum.find(attributes, fn attr -> !is_not_primary_key(attr) end)
 
     patch_fields =
       attributes
-      |> Enum.filter(fn %{updatable: updatable} -> updatable end)
-      |> Enum.filter(fn %{name: name} ->
+      |> Stream.filter(fn %{updatable: updatable} -> updatable end)
+      |> Stream.filter(fn %{name: name} ->
+        String.to_atom(name) not in excluded_input_fields
+      end)
+      |> Stream.filter(fn %{name: name} ->
         if extensions_module_exists &&
              name in Utils.maybe_apply(
                extensions_module,
@@ -1700,8 +1741,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                                                                                                                                                                                                                                                                                                                                                        #{description}
-                                                                                                                                                                                                                                                                                                                                                                                                                      \"\"\""}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        #{description}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      \"\"\""}
       end
       """
 

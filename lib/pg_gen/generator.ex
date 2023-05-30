@@ -43,6 +43,22 @@ defmodule PgGen.Generator do
   end
 
   def generate_absinthe(tables, enum_types, functions, schema, app) do
+    [excluded_create_fields] =
+      Utils.maybe_apply(
+        PgGen.LocalConfig.get_schema_extend_module(),
+        "exclude_fields_from_create",
+        [],
+        [%{}]
+      )
+
+    [excluded_update_fields] =
+      Utils.maybe_apply(
+        PgGen.LocalConfig.get_schema_extend_module(),
+        "exclude_fields_from_update",
+        [],
+        [%{}]
+      )
+
     type_defs =
       tables
       |> Enum.map(fn table ->
@@ -50,7 +66,13 @@ defmodule PgGen.Generator do
           table,
           functions.computed_columns_by_table[table.name],
           tables,
-          schema
+          schema,
+          %{
+            excluded_input_fields: %{
+              create: excluded_create_fields,
+              update: excluded_update_fields
+            }
+          }
         )
       end)
 

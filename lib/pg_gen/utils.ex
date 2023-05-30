@@ -219,6 +219,9 @@ defmodule PgGen.Utils do
 
   def maybe_apply(module, fun, args \\ [], fallback \\ nil)
 
+  def maybe_apply(module, fun, args, fallback) when is_binary(module),
+    do: maybe_apply(Module.concat(Elixir, module), fun, args, fallback)
+
   def maybe_apply(module, fun, args, fallback) when is_binary(fun),
     do: maybe_apply(module, String.to_atom(fun), args, fallback)
 

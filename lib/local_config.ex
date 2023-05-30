@@ -42,6 +42,10 @@ defmodule PgGen.LocalConfig do
     name || ""
   end
 
+  def get_schema_extend_module do
+    get_app_name() <> "Web.Schema.Extends"
+  end
+
   def get_repo_atom do
     {repo, _} = Code.eval_string("#{get_app_name()}.Repo")
     repo
