@@ -6,7 +6,7 @@ defmodule PgGen.Extend do
 
     stringified =
       contents
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         {:@, _, [{:override, _, _}]} -> false
         {:@, _, [{:override, _, _, _}]} -> false
         {_, _, _} -> true
@@ -56,7 +56,7 @@ defmodule PgGen.Extend do
 
     stringified =
       contents
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         {:@, _, [{:override, _, _}]} -> false
         {_, _, _} -> true
       end)

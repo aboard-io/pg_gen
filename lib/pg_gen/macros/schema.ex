@@ -7,7 +7,7 @@ defmodule PgGen.Schema do
     overrides_stringified =
       contents
       |> PgGen.Extend.stringify_overrides()
-      |> Enum.concat(PgGen.Extend.stringify_omits(contents))
+      |> Stream.concat(PgGen.Extend.stringify_omits(contents))
       |> Enum.uniq()
 
     contents =

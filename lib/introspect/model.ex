@@ -332,7 +332,7 @@ defmodule Introspection.Model do
         table_name_by_id
       ) do
     attr_constraints =
-      Enum.filter(constraints, fn %{"keyAttributeNums" => attrNums} ->
+      Stream.filter(constraints, fn %{"keyAttributeNums" => attrNums} ->
         Enum.any?(attrNums, fn attrNum -> attrNum == attr.num end)
       end)
       |> Enum.map(fn constraints ->
@@ -451,7 +451,7 @@ defmodule Introspection.Model do
 
   def generate_join_references(references) do
     references
-    |> Enum.map(fn reference ->
+    |> Stream.map(fn reference ->
       other_references = references -- [reference]
 
       other_references
@@ -467,8 +467,8 @@ defmodule Introspection.Model do
 
   def lift_types(tables_or_functions) do
     tables_or_functions
-    |> Enum.map(&get_enum_types/1)
-    |> Enum.flat_map(fn
+    |> Stream.map(&get_enum_types/1)
+    |> Stream.flat_map(fn
       x when is_list(x) -> x
       x -> [x]
     end)
@@ -484,7 +484,7 @@ defmodule Introspection.Model do
   end
 
   defp get_enum_types(attrs) when is_list(attrs) do
-    Enum.filter(attrs, fn attr ->
+    Stream.filter(attrs, fn attr ->
       is_enum_type =
         case attr.type[:enum_variants] do
           nil -> false
@@ -508,7 +508,7 @@ defmodule Introspection.Model do
 
   def add_indexes_to_table(table, table_indexes) do
     indexed_attrs =
-      Enum.map(
+      Stream.map(
         table_indexes,
         fn %{"attributeNums" => attr_nums} ->
           case attr_nums do
@@ -525,7 +525,7 @@ defmodule Introspection.Model do
 
     boolean_cols =
       table.attributes
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         %{type: %{name: "bool"}} -> true
         _ -> false
       end)
@@ -573,8 +573,8 @@ defmodule Introspection.Model do
     trimmed_arg_types =
       arg_type_ids
       |> Enum.slice(0, args_count)
-      |> Enum.map(&add_type_for_attribute(%{type_id: &1}, types))
-      |> Enum.with_index()
+      |> Stream.map(&add_type_for_attribute(%{type_id: &1}, types))
+      |> Stream.with_index()
       |> Enum.map(fn {arg, index} -> Map.put(arg, :name, Enum.at(arg_names, index)) end)
 
     return_type =

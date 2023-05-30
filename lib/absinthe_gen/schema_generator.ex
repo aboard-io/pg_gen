@@ -46,7 +46,7 @@ defmodule AbsintheGen.SchemaGenerator do
     attributes =
       built_attributes
       |> Utils.deduplicate_associations()
-      |> Enum.map(fn {a, b, c, opts} ->
+      |> Stream.map(fn {a, b, c, opts} ->
         {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
       end)
       |> Enum.map(fn {_, name, _, _} = attr ->
@@ -90,8 +90,8 @@ defmodule AbsintheGen.SchemaGenerator do
 
     computed_fields =
       computed_fields
-      |> Enum.map(&Builder.build/1)
-      |> Enum.map(fn {_, name, _, _} = attr ->
+      |> Stream.map(&Builder.build/1)
+      |> Stream.map(fn {_, name, _, _} = attr ->
         unless extensions_module_exists &&
                  name in Utils.maybe_apply(
                    extensions_module,
@@ -112,12 +112,12 @@ defmodule AbsintheGen.SchemaGenerator do
 
         references ->
           references
-          |> Enum.map(&Builder.build/1)
+          |> Stream.map(&Builder.build/1)
           |> Utils.deduplicate_references()
-          |> Enum.map(fn {a, b, c, opts} ->
+          |> Stream.map(fn {a, b, c, opts} ->
             {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
           end)
-          |> Enum.map(fn attr ->
+          |> Stream.map(fn attr ->
             # Pass the referenced table so we know if it has indexes we can use in arguments on the field
             FieldGenerator.to_string(
               attr,
@@ -269,10 +269,10 @@ defmodule AbsintheGen.SchemaGenerator do
       import_types #{module_name_web}.Schema.Types.Custom.UUID4
       import_types #{module_name_web}.Schema.Types.Custom.UUID62
       import_types #{module_name_web}.Schema.Types.Custom.Cursor
-      #{Enum.map(table_names, fn name -> "import_types #{module_name_web}.Schema.#{get_table_names(name).singular_camelized_table_name}Types" end) |> Enum.join("\n")}
+      #{Stream.map(table_names, fn name -> "import_types #{module_name_web}.Schema.#{get_table_names(name).singular_camelized_table_name}Types" end) |> Enum.join("\n")}
         #{if extensions_module_exists && Kernel.function_exported?(extensions_module, :imports, 0) do
       [imports] = extensions_module.imports()
-      Enum.map(imports, fn name -> "import_types #{name}" end) |> Enum.join("\n")
+      Stream.map(imports, fn name -> "import_types #{name}" end) |> Enum.join("\n")
     end}
 
       alias #{module_name_web}.Resolvers
@@ -412,12 +412,12 @@ defmodule AbsintheGen.SchemaGenerator do
 
     parent_table_filter_fields =
       table.attributes
-      |> Enum.filter(fn %{constraints: constraints} ->
+      |> Stream.filter(fn %{constraints: constraints} ->
         Enum.find(constraints, &Map.has_key?(&1, :referenced_table))
         |> is_nil()
         |> Kernel.not()
       end)
-      |> Enum.map(&Builder.build/1)
+      |> Stream.map(&Builder.build/1)
       |> Enum.map(fn {_assoc, name, type, _opts} ->
         type = Macro.underscore(type)
 
@@ -442,7 +442,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_scalar_filters() do
     ["datetime", "uuid4", "boolean", "string", "date", "integer", "uuid62"]
-    |> Enum.map(&generate_input_filter/1)
+    |> Stream.map(&generate_input_filter/1)
     |> Enum.join("\n\n")
   end
 
@@ -470,7 +470,7 @@ defmodule AbsintheGen.SchemaGenerator do
     } = get_table_names(name)
 
     values =
-      Enum.map(indexes, fn {name, _type} ->
+      Stream.map(indexes, fn {name, _type} ->
         """
         value :#{String.upcase(name)}_ASC, as: {:asc, :#{name}}
         value :#{String.upcase(name)}_DESC, as: {:desc, :#{name}}
@@ -796,9 +796,9 @@ defmodule AbsintheGen.SchemaGenerator do
 
     {functions, input_objects} =
       mutation_functions
-      |> Enum.filter(fn %{name: name} -> name not in overrides end)
-      |> Enum.filter(fn %{name: name} -> length(allow_list) === 0 || name in allow_list end)
-      |> Enum.map(&generate_custom_function_query(&1, tables))
+      |> Stream.filter(fn %{name: name} -> name not in overrides end)
+      |> Stream.filter(fn %{name: name} -> length(allow_list) === 0 || name in allow_list end)
+      |> Stream.map(&generate_custom_function_query(&1, tables))
       |> sort_functions_and_inputs()
 
     input_objects =
@@ -808,12 +808,12 @@ defmodule AbsintheGen.SchemaGenerator do
 
     payloads =
       mutation_functions
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         %{return_type: %{type: %{name: name}}} when name in @scalar_types -> false
         _ -> true
       end)
-      |> Enum.map(fn %{return_type: %{type: %{name: name}}} -> PgGen.Utils.singularize(name) end)
-      |> Enum.uniq()
+      |> Stream.map(fn %{return_type: %{type: %{name: name}}} -> PgGen.Utils.singularize(name) end)
+      |> Stream.uniq()
       |> Enum.map(fn return_type_name -> generate_mutation_payload(return_type_name, "mutate") end)
 
     {functions, payloads ++ input_objects}
@@ -877,7 +877,7 @@ defmodule AbsintheGen.SchemaGenerator do
     sources =
       tables
       |> filter_accessible(functions)
-      |> Enum.map(fn %{name: name} ->
+      |> Stream.map(fn %{name: name} ->
         singular_camelized_table = name |> PgGen.Utils.singularize() |> Macro.camelize()
 
         "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Connections.data(Contexts.#{singular_camelized_table}))"
@@ -944,7 +944,7 @@ defmodule AbsintheGen.SchemaGenerator do
       ""
     end}
     #{if cacheable_fields do
-      "@cacheable_fields [#{Enum.map(cacheable_fields, fn field -> ":#{field}" end) |> Enum.join(", ")}]"
+      "@cacheable_fields [#{Stream.map(cacheable_fields, fn field -> ":#{field}" end) |> Enum.join(", ")}]"
     else
       ""
     end}
@@ -1601,7 +1601,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     functions =
       functions
-      |> Enum.filter(fn %{name: name} ->
+      |> Stream.filter(fn %{name: name} ->
         name not in Utils.maybe_apply(
           module,
           "query_extensions_overrides",
@@ -1635,7 +1635,7 @@ defmodule AbsintheGen.SchemaGenerator do
   def db_function_queries(functions, tables) do
     {functions, _input_objects} =
       functions
-      |> Enum.map(&generate_custom_function_query(&1, tables))
+      |> Stream.map(&generate_custom_function_query(&1, tables))
       |> sort_functions_and_inputs()
 
     functions
@@ -1741,8 +1741,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        #{description}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      \"\"\""}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    #{description}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  \"\"\""}
       end
       """
 
@@ -1824,13 +1824,13 @@ defmodule AbsintheGen.SchemaGenerator do
 
   def generate_custom_records(functions) do
     functions
-    |> Enum.filter(fn %{return_type: return_type} ->
+    |> Stream.filter(fn %{return_type: return_type} ->
       Map.get(return_type, :composite_type, false)
     end)
-    |> Enum.map(fn %{return_type: %{name: name, attrs: attrs}} ->
+    |> Stream.map(fn %{return_type: %{name: name, attrs: attrs}} ->
       fields =
         attrs
-        |> Enum.map(fn attr ->
+        |> Stream.map(fn attr ->
           Map.merge(
             attr,
             %{
@@ -1841,8 +1841,8 @@ defmodule AbsintheGen.SchemaGenerator do
             }
           )
         end)
-        |> Enum.map(&Builder.build/1)
-        |> Enum.map(fn attr ->
+        |> Stream.map(&Builder.build/1)
+        |> Stream.map(fn attr ->
           FieldGenerator.to_string(attr)
         end)
         |> Enum.join("\n")
@@ -1966,7 +1966,7 @@ defmodule AbsintheGen.SchemaGenerator do
         field_strs =
           arg_strs
           |> String.split("\n")
-          |> Enum.map(fn
+          |> Stream.map(fn
             "arg " <> rest -> "field #{rest}"
             _ -> ""
           end)

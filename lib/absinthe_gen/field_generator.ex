@@ -25,7 +25,7 @@ defmodule AbsintheGen.FieldGenerator do
   }
 
   # filter out decimal since its type is itself
-  @type_list Enum.map(@type_map, fn {k, _} -> k end) |> Enum.filter(fn k -> k != "decimal" end)
+  @type_list Stream.map(@type_map, fn {k, _} -> k end) |> Enum.filter(fn k -> k != "decimal" end)
 
   def to_string(attr, table \\ %{})
 

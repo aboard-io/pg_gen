@@ -27,7 +27,7 @@ defmodule EctoGen.TableGenerator do
 
     required_fields =
       built_attributes
-      |> Enum.filter(&is_required/1)
+      |> Stream.filter(&is_required/1)
       |> Enum.map(fn
         {:field, name, _, _} ->
           ":#{name}"
@@ -65,36 +65,36 @@ defmodule EctoGen.TableGenerator do
 
     attribute_string =
       built_attributes
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         {:field, name, _, _} -> !(name in overrides)
         _ -> true
       end)
-      |> Enum.map(&FieldGenerator.to_string/1)
+      |> Stream.map(&FieldGenerator.to_string/1)
       |> Enum.sort()
       |> Enum.reverse()
-      |> Enum.concat(extensions)
+      |> Stream.concat(extensions)
       |> Enum.join("\n")
 
     computed_fields_string =
       computed_fields
-      |> Enum.map(&Builder.build/1)
-      |> Enum.filter(&(!is_nil(&1)))
-      |> Enum.map(&(FieldGenerator.to_string(&1) <> ", virtual: true"))
+      |> Stream.map(&Builder.build/1)
+      |> Stream.filter(&(!is_nil(&1)))
+      |> Stream.map(&(FieldGenerator.to_string(&1) <> ", virtual: true"))
       |> Enum.join("\n")
 
     computed_fields_fun_str =
       computed_fields
-      |> Enum.map(&":#{&1.simplified_name}")
+      |> Stream.map(&":#{&1.simplified_name}")
       |> Enum.join(", ")
 
     computed_fields_with_types_fun_str =
       computed_fields
-      |> Enum.map(&"{:#{&1.simplified_name}, #{process_return_type(&1)}}")
+      |> Stream.map(&"{:#{&1.simplified_name}, #{process_return_type(&1)}}")
       |> Enum.join(", ")
 
     return_types =
       computed_fields
-      |> Enum.map(&process_return_type/1)
+      |> Stream.map(&process_return_type/1)
       |> Enum.filter(fn
         ":" <> _ -> false
         _ -> true
@@ -116,7 +116,7 @@ defmodule EctoGen.TableGenerator do
 
     belongs_to_aliases =
       built_attributes
-      |> Enum.filter(fn {type, _, _, _} -> type == :belongs_to end)
+      |> Stream.filter(fn {type, _, _, _} -> type == :belongs_to end)
       |> Enum.map(fn {_, _, alias, _} -> alias end)
 
     {references, aliases} =
@@ -132,17 +132,17 @@ defmodule EctoGen.TableGenerator do
 
           aliases =
             built_references
-            |> Enum.map(fn {_, _, alias, _} -> alias end)
+            |> Stream.map(fn {_, _, alias, _} -> alias end)
             |> Enum.uniq()
 
           references =
             built_references
-            |> Enum.filter(fn
+            |> Stream.filter(fn
               {:has_many, name, _, _} -> !(name in overrides)
               {:many_to_many, name, _, _} -> !(name in overrides)
               _ -> true
             end)
-            |> Enum.map(&FieldGenerator.to_string/1)
+            |> Stream.map(&FieldGenerator.to_string/1)
             |> Enum.sort()
             |> Enum.join("\n")
 
@@ -153,7 +153,7 @@ defmodule EctoGen.TableGenerator do
 
     aliases =
       (belongs_to_aliases ++ aliases ++ return_types)
-      |> Enum.uniq()
+      |> Stream.uniq()
       |> Enum.join(", ")
 
     app_name = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
@@ -173,7 +173,7 @@ defmodule EctoGen.TableGenerator do
        import Ecto.Changeset
 
        @pg_columns [
-         #{Enum.map(attributes, &":#{&1.name}") |> Enum.join(", ")}
+         #{Stream.map(attributes, &":#{&1.name}") |> Enum.join(", ")}
        ]
 
        @derive {Jason.Encoder, only: @pg_columns}
@@ -211,8 +211,8 @@ defmodule EctoGen.TableGenerator do
               #{singular_lowercase}
               |> cast(attrs, fields)
               |> validate_required(required_fields)
-              #{Enum.map(foreign_key_constraints, fn field_name -> "|> foreign_key_constraint(#{field_name})" end) |> Enum.join("\n")}
-              #{Enum.map(unique_constraints, fn %{with: with, name: name} -> "|> unique_constraint([#{Enum.join(with, ", ")}], name: \"#{name}\")" end) |> Enum.join("\n")}
+              #{Stream.map(foreign_key_constraints, fn field_name -> "|> foreign_key_constraint(#{field_name})" end) |> Enum.join("\n")}
+              #{Stream.map(unique_constraints, fn %{with: with, name: name} -> "|> unique_constraint([#{Enum.join(with, ", ")}], name: \"#{name}\")" end) |> Enum.join("\n")}
             end
 
           # Computed fields helpers
@@ -226,7 +226,7 @@ defmodule EctoGen.TableGenerator do
 
 
           def to_pg_row(%{} = map) do
-          [#{Enum.map(attributes, &"{:#{&1.name}, :#{if &1.type.enum_variants == nil do
+          [#{Stream.map(attributes, &"{:#{&1.name}, :#{if &1.type.enum_variants == nil do
        &1.type.name
      else
        "enum"

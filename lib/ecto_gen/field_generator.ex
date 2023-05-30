@@ -70,7 +70,7 @@ defmodule EctoGen.FieldGenerator do
               "{:array, #{type}}"
 
             is_enum_array_type ->
-              "{:array, Ecto.Enum}, values: [#{Enum.map(options[:enum_variants], fn v -> ":#{v}" end) |> Enum.join(", ")}]"
+              "{:array, Ecto.Enum}, values: [#{Stream.map(options[:enum_variants], fn v -> ":#{v}" end) |> Enum.join(", ")}]"
 
             true ->
               type
@@ -112,7 +112,7 @@ defmodule EctoGen.FieldGenerator do
     Enum.reduce(options, base, fn {k, v}, acc ->
       case k do
         :values ->
-          "#{acc}, values: [#{Enum.map(v, &":#{&1}") |> Enum.join(", ")}]"
+          "#{acc}, values: [#{Stream.map(v, &":#{&1}") |> Enum.join(", ")}]"
 
         :fk ->
           "#{acc}, foreign_key: :#{v}"

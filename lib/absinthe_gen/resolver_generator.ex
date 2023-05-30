@@ -43,19 +43,19 @@ defmodule AbsintheGen.ResolverGenerator do
 
     computed_column_strings_for_table =
       functions.computed_columns_by_table[name]
-      |> Enum.map(&custom_column_to_string(&1, singular_camelized_table_name))
+      |> Stream.map(&custom_column_to_string(&1, singular_camelized_table_name))
       |> Enum.join("\n")
 
     function_strings_for_table =
       (functions.queries ++ functions.mutations)
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         %{return_type: %{type: %{name: ^name}}} -> true
         _ -> false
       end)
-      |> Enum.filter(fn %{name: name} ->
+      |> Stream.filter(fn %{name: name} ->
         !(extensions_module_exists && name in extensions_module.overrides())
       end)
-      |> Enum.map(&custom_function_to_string(&1, table))
+      |> Stream.map(&custom_function_to_string(&1, table))
       |> Enum.join("\n")
 
     app_atom = Macro.camelize(app_name)
@@ -265,12 +265,12 @@ defmodule AbsintheGen.ResolverGenerator do
       #{if has_args do
       """
       %{
-        #{Enum.map(required_arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
+        #{Stream.map(required_arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
         } = #{argument_string}
       """
     end}
     #{if length(optional_arg_names) > 0 do
-      Enum.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
+      Stream.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
     end}
       #{if table.selectable do
       """
@@ -322,12 +322,12 @@ defmodule AbsintheGen.ResolverGenerator do
       #{if has_args do
       """
       %{
-        #{Enum.map(required_arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
+        #{Stream.map(required_arg_names, fn name -> "#{name}: #{name}" end) |> Enum.join(", ")}
         } = #{argument_string}
       """
     end}
     #{if length(optional_arg_names) > 0 do
-      Enum.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
+      Stream.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
     end}
       #{return_value}
     end
@@ -337,17 +337,17 @@ defmodule AbsintheGen.ResolverGenerator do
   def generate_custom_functions_returning_scalars_and_records_to_string(functions, module_name) do
     function_strs =
       functions
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         %{return_type: %{type: %{name: type_name}}} when type_name in @scalar_types -> true
         %{return_type: %{type: %{category: "E"}}} -> true
         %{return_type: %{composite_type: true}} -> true
         _ -> false
       end)
-      |> Enum.map(fn %{
-                       name: name,
-                       arg_names: arg_names,
-                       is_stable: is_stable
-                     } ->
+      |> Stream.map(fn %{
+                         name: name,
+                         arg_names: arg_names,
+                         is_stable: is_stable
+                       } ->
         has_args = length(arg_names) > 0
         arg_var = if is_stable, do: "args", else: "args.input"
 

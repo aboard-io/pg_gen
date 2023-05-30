@@ -125,15 +125,13 @@ defmodule PgGen.Builder do
 
   def build_field(%{name: name}), do: name
 
-  def build_type(
-        %{
-          type: %{
-            name: name,
-            category: "A",
-            array_type: %{category: "E", enum_variants: enum_variants}
-          }
+  def build_type(%{
+        type: %{
+          name: name,
+          category: "A",
+          array_type: %{category: "E", enum_variants: enum_variants}
         }
-      )
+      })
       when not is_nil(enum_variants) and length(enum_variants) > 0 do
     {:enum_array, String.replace(name, ~r/^[_]/, ""), enum_variants}
   end
@@ -163,7 +161,7 @@ defmodule PgGen.Builder do
       values: enum_variants,
       enum_name: if(is_nil(enum_variants), do: nil, else: name)
     ]
-    |> Enum.filter(fn {_k, v} -> !is_nil(v) end)
+    |> Stream.filter(fn {_k, v} -> !is_nil(v) end)
     |> Enum.into(Keyword.new())
   end
 
@@ -183,7 +181,7 @@ defmodule PgGen.Builder do
         external_reference: external_reference
       ) do
     [:fk, :ref, :pk, :type]
-    |> Enum.map(fn key ->
+    |> Stream.map(fn key ->
       case key do
         :fk ->
           if !is_standard_foreign_key(attribute.name, table_name) do
@@ -210,7 +208,7 @@ defmodule PgGen.Builder do
           end
       end
     end)
-    |> Enum.filter(fn v -> v end)
+    |> Stream.filter(fn v -> v end)
     |> Enum.into([])
   end
 

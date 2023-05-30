@@ -25,8 +25,8 @@ defmodule PgGen.Generator do
   def generate_ecto_contexts(tables, functions, schema, app_name) do
     contexts =
       tables
-      |> Enum.map(fn table -> ContextGenerator.generate(table, functions, app_name, schema) end)
-      |> Enum.filter(fn
+      |> Stream.map(fn table -> ContextGenerator.generate(table, functions, app_name, schema) end)
+      |> Stream.filter(fn
         {_, nil} -> false
         {_, _} -> true
       end)
@@ -78,17 +78,17 @@ defmodule PgGen.Generator do
 
     connection_defs =
       tables
-      |> Enum.map(&SchemaGenerator.generate_connection/1)
+      |> Stream.map(&SchemaGenerator.generate_connection/1)
       |> Enum.join("\n\n")
 
     enum_defs =
       enum_types
-      |> Enum.map(&EnumGenerator.to_string/1)
+      |> Stream.map(&EnumGenerator.to_string/1)
       |> Enum.join("\n\n")
 
     enum_filters =
       enum_types
-      |> Enum.map(fn %{name: name} -> SchemaGenerator.generate_input_filter(name) end)
+      |> Stream.map(fn %{name: name} -> SchemaGenerator.generate_input_filter(name) end)
       |> Enum.join("\n\n")
 
     scalar_filters = SchemaGenerator.generate_scalar_filters()
@@ -202,7 +202,7 @@ defmodule PgGen.Generator do
 
     resolvers =
       type_defs
-      |> Enum.map(fn {name, _} ->
+      |> Stream.map(fn {name, _} ->
         ResolverGenerator.generate(
           name,
           Enum.find(tables, fn %{name: t_name} ->
@@ -211,7 +211,7 @@ defmodule PgGen.Generator do
           functions
         )
       end)
-      |> Enum.filter(fn {_, code} -> !is_nil(code) end)
+      |> Stream.filter(fn {_, code} -> !is_nil(code) end)
       |> Enum.into(%{})
 
     pg_function_resolver =

@@ -39,11 +39,10 @@ defmodule Introspection do
     server_version_num = get_version_number(db_options)
     introspection_query = Introspection.Query.make_introspection_query(server_version_num)
     %{rows: rows} = run_query(introspection_query, db_options, [schemas, false])
-    rows = Enum.map(rows, fn [row] -> row end)
 
     result =
-      Enum.reduce(
-        rows,
+      Stream.map(rows, fn [row] -> row end)
+      |> Enum.reduce(
         %{
           "_pg_version" => server_version_num,
           "namespace" => [],

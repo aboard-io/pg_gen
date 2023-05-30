@@ -41,15 +41,15 @@ defmodule EctoGen.ContextGenerator do
 
     function_strings_for_table =
       (functions.queries ++ functions.mutations)
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         %{return_type: %{type: %{name: ^name}}} -> true
         _ -> false
       end)
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         %{name: name} -> name not in overrides
         _ -> false
       end)
-      |> Enum.map(&custom_function_to_string(&1, schema, preloads, table))
+      |> Stream.map(&custom_function_to_string(&1, schema, preloads, table))
       |> Enum.join("\n")
 
     computed_columns =
@@ -178,7 +178,7 @@ defmodule EctoGen.ContextGenerator do
     def with_computed_columns(query, []), do: query
     #{if length(computed_columns) > 0, do: """
       def with_computed_columns(query, selections) do
-        #{Enum.map(computed_columns, fn %{name: name, simplified_name: simplified_name} -> """
+        #{Stream.map(computed_columns, fn %{name: name, simplified_name: simplified_name} -> """
         query =
           if :#{simplified_name} in selections do
             query
@@ -302,7 +302,7 @@ defmodule EctoGen.ContextGenerator do
       ) do
     function_strs =
       functions
-      |> Enum.filter(fn
+      |> Stream.filter(fn
         %{return_type: %{type: %{name: type_name}}} when type_name in @scalar_types -> true
         %{return_type: %{composite_type: true}} -> true
         %{return_type: %{type: %{category: "E"}}} -> true
@@ -347,8 +347,8 @@ defmodule EctoGen.ContextGenerator do
             numbered_args =
               arg_names
               |> Enum.slice(range_for_args)
-              |> Enum.with_index(1)
-              |> Enum.map(fn {_, index} -> "$#{index}" end)
+              |> Stream.with_index(1)
+              |> Stream.map(fn {_, index} -> "$#{index}" end)
               |> Enum.join(", ")
 
             is_void_type = return_type_name == "void"
@@ -434,14 +434,14 @@ defmodule EctoGen.ContextGenerator do
     pinned_args_string =
       generate_args_str(arg_types)
       |> String.split(", ")
-      |> Enum.map(fn arg -> "^#{arg}" end)
+      |> Stream.map(fn arg -> "^#{arg}" end)
       |> Enum.join(", ")
 
     repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
 
     question_marks =
       arg_names
-      |> Enum.map(fn _ -> "?" end)
+      |> Stream.map(fn _ -> "?" end)
       |> Enum.join(", ")
 
     if table.selectable do
