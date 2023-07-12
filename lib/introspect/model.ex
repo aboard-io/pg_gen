@@ -555,7 +555,8 @@ defmodule Introspection.Model do
           "inputArgsCount" => args_count,
           "name" => name,
           "returnTypeId" => return_type_id,
-          "returnsSet" => returns_set
+          "returnsSet" => returns_set,
+          "isDeprecated" => is_deprecated
         },
         types
       ) do
@@ -612,7 +613,8 @@ defmodule Introspection.Model do
       return_type: return_type,
       name: name,
       return_type_id: return_type_id,
-      returns_set: returns_set
+      returns_set: returns_set,
+      is_deprecated: is_deprecated
     }
   end
 

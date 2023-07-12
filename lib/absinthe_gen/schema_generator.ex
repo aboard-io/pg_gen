@@ -1059,7 +1059,7 @@ defmodule AbsintheGen.SchemaGenerator do
           # if the user is nil, check the cache first. if it's not there, resolve
           parent, args, %{context: %{current_user: nil}} = info ->
             cache_key = {field_name, parent.id, args}
-    
+
             do_cache_check(field_name, cache_key, fn ->
               resolve_many_with_dataloader({repo, field_name}, parent, args, info, cache_key)
             end)
@@ -1067,7 +1067,7 @@ defmodule AbsintheGen.SchemaGenerator do
     else
     end}
 
-          # this is the default case for associations. it resolves at the top level, 
+          # this is the default case for associations. it resolves at the top level,
           # then passes down the nodes, parent, and args to the children so they
           # can handle nodes, page_info, and total_count
           parent, args, info ->
@@ -1085,7 +1085,7 @@ defmodule AbsintheGen.SchemaGenerator do
           else
             fun.()
           end
-    
+
         _ ->
           # fun.()
           if Application.get_env(:aboard_ex, :env) == :dev do
@@ -1219,7 +1219,7 @@ defmodule AbsintheGen.SchemaGenerator do
       # if the user is nil, check the cache first. if it's not there, resolve
       parent, args, %{context: %{current_user: nil}} = info ->
         cache_key = {field_name, parent.id, args}
-    
+
         do_cache_check(field_name, cache_key, fn ->
           resolve_one_with_dataloader({repo, field_name}, parent, args, info, cache_key)
         end)
@@ -1406,7 +1406,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
     defmodule #{module_name}.Schema.ChangesetErrors do
       @doc \"\"\"
-      Traverses the changeset errors and returns a map of 
+      Traverses the changeset errors and returns a map of
       error messages. For example:
 
       %{start_date: ["can't be blank"], end_date: ["can't be blank"]}
@@ -1711,7 +1711,8 @@ defmodule AbsintheGen.SchemaGenerator do
           is_strict: is_strict,
           args: args,
           args_count: args_count,
-          args_with_default_count: args_with_default_count
+          args_with_default_count: args_with_default_count,
+          is_deprecated: is_deprecated
         } = function,
         tables
       ) do
@@ -1738,6 +1739,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
       function = """
       field :#{name}, #{return_type_str} do
+          #{if is_deprecated, do: "deprecate() \n", else: ""}
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"

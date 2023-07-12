@@ -9,6 +9,8 @@ defmodule Introspection.Query do
   It takes a couple of optional arguments and returns a string, which is a massive SQL query.
   """
 
+  @deprecated_key "@deprecated"
+
   def make_introspection_query(
         server_version_num \\ 110_000,
         options \\ %{pg_legacy_functions_only: false, pg_ignore_rbac: false}
@@ -24,7 +26,7 @@ defmodule Introspection.Query do
         select pg_roles.oid _oid, pg_roles.*
         from pg_roles, accessible_roles, pg_auth_members
         where pg_auth_members.roleid = pg_roles.oid
-          and pg_auth_members.member = accessible_roles._oid 
+          and pg_auth_members.member = accessible_roles._oid
     """
 
     """
@@ -84,7 +86,8 @@ defmodule Introspection.Query do
           pro.pronargdefaults as "argDefaultsNum",
           pro.procost as "cost",
           exists(select 1 from accessible_roles where has_function_privilege(accessible_roles.oid, pro.oid, 'EXECUTE')) as "aclExecutable",
-          (select lanname from pg_catalog.pg_language where pg_language.oid = pro.prolang) as "language"
+          (select lanname from pg_catalog.pg_language where pg_language.oid = pro.prolang) as "language",
+          (dsc.description ilike '%#{@deprecated_key}%') as "isDeprecated"
         from
           pg_catalog.pg_proc as pro
           left join pg_catalog.pg_description as dsc on dsc.objoid = pro.oid and dsc.classoid = 'pg_catalog.pg_proc'::regclass
