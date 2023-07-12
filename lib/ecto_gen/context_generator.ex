@@ -124,10 +124,10 @@ defmodule EctoGen.ContextGenerator do
         cache_ttl = AbsintheGen.ResolverGenerator.get_cache_ttl(app_module_name)
         """
         def #{get_name}(id, computed_selections \\\\ [], context \\\\ %{})
-      
+
         def #{get_name}(id, computed_selections, %{current_user: nil}) do
           cache_key = {:#{singular_table_name}, id}
-      
+
           if value = #{app_module_name}.Contexts.Cache.get(cache_key) do
             value
           else
@@ -498,28 +498,17 @@ defmodule EctoGen.ContextGenerator do
 
     repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
 
+    arg_positions =
+      arg_names
+      |> Enum.with_index(fn _, index -> "$#{index + 1}" end)
+      |> Enum.join(", ")
+
     preload = Map.get(preloads, name, false)
     preload_string = if preload, do: "|> Repo.preload(#{Macro.to_string(preload)})", else: ""
 
     """
     def #{name}(#{simple_args_str}) do
-        #{if args_with_default_count == 0 do
-      arg_positions = arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
-      """
       case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
-      """
-    else
-      arg_positions = arg_names |> Enum.with_index(fn _, index -> "\"$#{index + 1}\"" end) |> Enum.join(", ")
-    
-      """
-        missing_field_count = [#{simple_args_str}]
-          |> Enum.filter(fn val -> val == #{@optional_field_missing} end)
-          |> length()
-    
-        case Repo.query("select * from #{schema}.#{name}(#\{Enum.slice([#{arg_positions}], 0..(#{args_count} - missing_field_count - 1)) |> Enum.join(", ")})", [#{args_str}]
-        |> Enum.filter(fn val -> val != #{@optional_field_missing} end)) do
-      """
-    end}
         {:ok, result} ->
           Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1})) |> List.first() #{preload_string}
 
@@ -577,7 +566,7 @@ defmodule EctoGen.ContextGenerator do
     Enum.map(arg_types, fn
       %{type: %{name: "uuid"}, name: name} ->
         if name in optional_arg_names do
-          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: Ecto.UUID.dump!(#{name}))"
+          "(if #{name} == #{@optional_field_missing} or #{name} == nil, do: nil, else: Ecto.UUID.dump!(#{name}))"
         else
           "Ecto.UUID.dump!(#{name})"
         end
@@ -591,7 +580,7 @@ defmodule EctoGen.ContextGenerator do
           PgGen.LocalConfig.get_app_name() <> ".Repo." <> names.singular_camelized_table_name
 
         if name in optional_arg_names do
-          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: Enum.map(#{name}, &#{repo_name}.to_pg_row/1))"
+          "(if #{name} == #{@optional_field_missing} or #{name} == nil, do: nil, else: Enum.map(#{name}, &#{repo_name}.to_pg_row/1))"
         else
           "Enum.map(#{name}, &#{repo_name}.to_pg_row/1)"
         end
@@ -599,7 +588,7 @@ defmodule EctoGen.ContextGenerator do
       # if it's an array of UUIDs, run UUID.dump!
       %{type: %{array_type: %{name: "uuid"}}, name: name} ->
         if name in optional_arg_names do
-          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: Enum.map(#{name}, &Ecto.UUID.dump!/1))"
+          "(if #{name} == #{@optional_field_missing} or #{name} == nil, do: nil, else: Enum.map(#{name}, &Ecto.UUID.dump!/1))"
         else
           "Enum.map(#{name}, &Ecto.UUID.dump!/1)"
         end
@@ -607,7 +596,7 @@ defmodule EctoGen.ContextGenerator do
       # if it's an enum, it comes in as an atom; postgrex will need a string
       %{type: %{category: "E"}, name: name} ->
         if name in optional_arg_names do
-          "(if #{name} == #{@optional_field_missing}, do: #{name}, else: to_string(#{name}))"
+          "(if #{name} == #{@optional_field_missing} or #{name} == nil, do: nil, else: to_string(#{name}))"
         else
           "to_string(#{name})"
         end
