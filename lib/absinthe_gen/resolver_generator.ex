@@ -15,6 +15,8 @@ defmodule AbsintheGen.ResolverGenerator do
     "void"
   ]
 
+  @optional_field_missing ":__MISSING__"
+
   def generate(name, table, functions) do
     {name, resolver_template(PgGen.LocalConfig.get_app_name(), name, table, functions)}
   end
@@ -268,7 +270,7 @@ defmodule AbsintheGen.ResolverGenerator do
       """
     end}
     #{if length(optional_arg_names) > 0 do
-      Stream.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, nil)" end) |> Enum.join("\n")
+      Stream.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
     end}
       #{if table.selectable do
       """
@@ -325,7 +327,7 @@ defmodule AbsintheGen.ResolverGenerator do
       """
     end}
     #{if length(optional_arg_names) > 0 do
-      Stream.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, nil)" end) |> Enum.join("\n")
+      Stream.map(optional_arg_names, fn name -> "#{name} = Map.get(#{argument_string}, :#{name}, #{@optional_field_missing})" end) |> Enum.join("\n")
     end}
       #{return_value}
     end
