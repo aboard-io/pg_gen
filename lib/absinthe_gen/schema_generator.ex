@@ -1759,6 +1759,7 @@ defmodule AbsintheGen.SchemaGenerator do
           args: args,
           is_stable: is_stable,
           is_strict: is_strict,
+          is_deprecated: is_deprecated,
           args_count: args_count,
           args_with_default_count: args_with_default_count,
           returns_set: returns_set
@@ -1785,6 +1786,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     {"""
      field :#{name}, #{return_type} do
+      #{if is_deprecated, do: "deprecate() \n", else: ""}
       #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
        resolve &Resolvers.PgFunctions.#{name}/3
      end
