@@ -124,10 +124,10 @@ defmodule EctoGen.ContextGenerator do
         cache_ttl = AbsintheGen.ResolverGenerator.get_cache_ttl(app_module_name)
         """
         def #{get_name}(id, computed_selections \\\\ [], context \\\\ %{})
-      
+
         def #{get_name}(id, computed_selections, %{current_user: nil}) do
           cache_key = {:#{singular_table_name}, id}
-      
+
           if value = #{app_module_name}.Contexts.Cache.get(cache_key) do
             value
           else
@@ -501,6 +501,8 @@ defmodule EctoGen.ContextGenerator do
     preload = Map.get(preloads, name, false)
     preload_string = if preload, do: "|> Repo.preload(#{Macro.to_string(preload)})", else: ""
 
+    params_string = generate_params_str(arg_types)
+
     """
     def #{name}(#{simple_args_str}) do
         #{if args_with_default_count == 0 do
@@ -509,15 +511,21 @@ defmodule EctoGen.ContextGenerator do
       case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
       """
     else
-      arg_positions = arg_names |> Enum.with_index(fn _, index -> "\"$#{index + 1}\"" end) |> Enum.join(", ")
-    
       """
-        missing_field_count = [#{simple_args_str}]
-          |> Enum.filter(fn val -> val == #{@optional_field_missing} end)
-          |> length()
-    
-        case Repo.query("select * from #{schema}.#{name}(#\{Enum.slice([#{arg_positions}], 0..(#{args_count} - missing_field_count - 1)) |> Enum.join(", ")})", [#{args_str}]
-        |> Enum.filter(fn val -> val != #{@optional_field_missing} end)) do
+        arg_values = [#{args_str}]
+        arg_names = [#{params_string}]
+
+        args_with_values =
+          Enum.zip(arg_names, arg_values)
+          |> Enum.filter(fn {_, value} -> value != :__MISSING__ end)
+        values =
+          args_with_values
+          |> Enum.map(fn {_, value} -> value end)
+        args =
+          Enum.with_index(args_with_values, fn {arg, _}, index -> "#\{arg} => $#\{index + 1}" end)
+          |> Enum.join(", ")
+
+        case Repo.query("select * from #{schema}.#{name}(#\{args})", values) do
       """
     end}
         {:ok, result} ->
@@ -571,6 +579,15 @@ defmodule EctoGen.ContextGenerator do
       end
     end
     """
+  end
+
+  defp generate_params_str(args) do
+    args
+    |> Enum.map(fn %{name: name, prefixed_with_underscore: prefixed_with_underscore} ->
+      underscore = if prefixed_with_underscore, do: "_", else: ""
+      "\"#{underscore}#{name}\""
+    end)
+    |> Enum.join(", ")
   end
 
   defp generate_args_str(arg_types, optional_arg_names \\ []) do

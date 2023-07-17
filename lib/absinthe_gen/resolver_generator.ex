@@ -78,7 +78,7 @@ defmodule AbsintheGen.ResolverGenerator do
         #{if selectable do
         select_name = "#{singular_underscore_table_name}"
         is_cacheable = root_query_is_cacheable(app_name, select_name)
-      
+
         unless extensions_module_exists && select_name in extensions_module.overrides() do
           """
           def #{singular_underscore_table_name}(_, %{id: id}, info) do
@@ -87,7 +87,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-      
+
           case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections#{if is_cacheable, do: ", info.context", else: ""}) do
               :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
               result -> {:ok, result}
@@ -113,9 +113,9 @@ defmodule AbsintheGen.ResolverGenerator do
                 info,
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
-      
+
             nodes = if Resolvers.Utils.has_nodes?(info), do: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), else: []
-      
+
             Resolvers.Connections.return_nodes(
               nodes,
               nil,
@@ -183,7 +183,7 @@ defmodule AbsintheGen.ResolverGenerator do
           def #{delete_name}(parent, %{id: id}, _) do
             #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
             case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
-              {:ok, #{singular_underscore_table_name}} -> 
+              {:ok, #{singular_underscore_table_name}} ->
                 {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
               {:error, changeset} ->
                 {:error,
@@ -281,7 +281,7 @@ defmodule AbsintheGen.ResolverGenerator do
       case #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context}"}) do
         {:error, reason} ->
           {:error, reason}
-    
+
         result ->
           {:ok,
           %{

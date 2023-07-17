@@ -560,6 +560,10 @@ defmodule Introspection.Model do
         },
         types
       ) do
+    underscore_prefixed_arg_names =
+      arg_names
+      |> Enum.filter(fn name -> String.starts_with?(name, "_") end)
+
     arg_names =
       arg_names
       |> Enum.map(fn
@@ -577,6 +581,7 @@ defmodule Introspection.Model do
       |> Stream.map(&add_type_for_attribute(%{type_id: &1}, types))
       |> Stream.with_index()
       |> Enum.map(fn {arg, index} -> Map.put(arg, :name, Enum.at(arg_names, index)) end)
+      |> Enum.map(fn arg ->Map.put(arg, :prefixed_with_underscore, Enum.member?(underscore_prefixed_arg_names, "_#{arg.name}")) end)
 
     return_type =
       if args_count < length(arg_names) do
