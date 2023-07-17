@@ -1739,7 +1739,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
       function = """
       field :#{name}, #{return_type_str} do
-          #{if is_deprecated, do: "deprecate() \n", else: ""}
+          #{if is_deprecated, do: "deprecate(\"Deprecated\") \n", else: ""}
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
@@ -1786,7 +1786,7 @@ defmodule AbsintheGen.SchemaGenerator do
 
     {"""
      field :#{name}, #{return_type} do
-      #{if is_deprecated, do: "deprecate() \n", else: ""}
+      #{if is_deprecated, do: "deprecate(\"Deprecated\") \n", else: ""}
       #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
        resolve &Resolvers.PgFunctions.#{name}/3
      end
