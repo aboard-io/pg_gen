@@ -621,15 +621,25 @@ defmodule AbsintheGen.SchemaGenerator do
     } = get_table_names(name)
 
     input_name = "create_#{singular_underscore_table_name}_input"
-
+    
     input_object =
-      generate_create_input_object(
-        input_name,
-        table.attributes,
-        extensions_module,
-        extensions_module_exists,
-        excluded_fields
-      )
+      if input_name in Utils.maybe_apply(
+           extensions_module,
+           "overrides",
+           [],
+           []
+         ) do
+        ""
+      else
+        input_object =
+          generate_create_input_object(
+            input_name,
+            table.attributes,
+            extensions_module,
+            extensions_module_exists,
+            excluded_fields
+          )
+      end
 
     payload = generate_mutation_payload(singular_underscore_table_name, "create")
 
@@ -651,13 +661,22 @@ defmodule AbsintheGen.SchemaGenerator do
     input_name = "update_#{singular_underscore_table_name}"
 
     input_object =
-      generate_update_input_object(
-        input_name,
-        table.attributes,
-        extensions_module,
-        extensions_module_exists,
-        excluded_fields
-      )
+      if input_name in Utils.maybe_apply(
+           extensions_module,
+           "overrides",
+           [],
+           []
+         ) do
+        ""
+      else
+        generate_update_input_object(
+          input_name,
+          table.attributes,
+          extensions_module,
+          extensions_module_exists,
+          excluded_fields
+        )
+      end
 
     payload = generate_mutation_payload(singular_underscore_table_name, "update")
 
