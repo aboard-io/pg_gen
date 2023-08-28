@@ -621,7 +621,7 @@ defmodule AbsintheGen.SchemaGenerator do
     } = get_table_names(name)
 
     input_name = "create_#{singular_underscore_table_name}_input"
-    
+
     input_object =
       if input_name in Utils.maybe_apply(
            extensions_module,
@@ -1078,7 +1078,7 @@ defmodule AbsintheGen.SchemaGenerator do
           # if the user is nil, check the cache first. if it's not there, resolve
           parent, args, %{context: %{current_user: nil}} = info ->
             cache_key = {field_name, parent.id, args}
-
+    
             do_cache_check(field_name, cache_key, fn ->
               resolve_many_with_dataloader({repo, field_name}, parent, args, info, cache_key)
             end)
@@ -1104,7 +1104,7 @@ defmodule AbsintheGen.SchemaGenerator do
           else
             fun.()
           end
-
+    
         _ ->
           # fun.()
           if Application.get_env(:aboard_ex, :env) == :dev do
@@ -1238,7 +1238,7 @@ defmodule AbsintheGen.SchemaGenerator do
       # if the user is nil, check the cache first. if it's not there, resolve
       parent, args, %{context: %{current_user: nil}} = info ->
         cache_key = {field_name, parent.id, args}
-
+    
         do_cache_check(field_name, cache_key, fn ->
           resolve_one_with_dataloader({repo, field_name}, parent, args, info, cache_key)
         end)
@@ -1313,12 +1313,11 @@ defmodule AbsintheGen.SchemaGenerator do
       \"\"\"
       def resolve_page_info() do
         fn %{nodes: nodes, args: parent_args, page_info: page_info}, _, _ ->
-          {_dir, col} =
-            order_by =
+          order_by =
             case Map.get(parent_args, :order_by) do
               nil -> raise "All queries should have a default order_by"
-              [{dir, col} | _] -> {dir, col}
-              {dir, col} -> {dir, col}
+              {dir, col} -> [{dir, col}]
+              args when is_list(args) -> args
             end
 
           start_cursor_val =
@@ -1327,20 +1326,29 @@ defmodule AbsintheGen.SchemaGenerator do
                 nil
 
               [node | _] ->
-                {order_by, Map.get(node, col)}
+                Enum.map(order_by, fn {dir, col} ->
+                  {{dir, col}, Map.get(node, col)}
+                end)
+
+                # {order_by, Map.get(node, col)}
             end
 
           end_cursor_val =
             case Enum.reverse(nodes) do
-              [] -> nil
-              [node | _] -> {order_by, Map.get(node, col)}
+              [] ->
+                nil
+
+              [node | _] ->
+                Enum.map(order_by, fn {dir, col} ->
+                  {{dir, col}, Map.get(node, col)}
+                end)
             end
 
           {:ok,
-          Map.merge(page_info, %{
-            start_cursor: start_cursor_val,
-            end_cursor: end_cursor_val
-          })}
+           Map.merge(page_info, %{
+             start_cursor: start_cursor_val,
+             end_cursor: end_cursor_val
+           })}
         end
       end
 
@@ -1586,8 +1594,16 @@ defmodule AbsintheGen.SchemaGenerator do
         @spec decode(Absinthe.Blueprint.Input.String.t()) :: {:ok, term()} | :error
         @spec decode(Absinthe.Blueprint.Input.Null.t()) :: {:ok, nil}
         defp decode(%Absinthe.Blueprint.Input.String{value: value}) do
-          [dir, col_name, value] = value |> Base.decode64!() |> Jason.decode!()
-          {:ok, {{String.to_existing_atom(dir), String.to_existing_atom(col_name)}, value}}
+          decoded_cursor =
+            value
+            |> Base.decode64!()
+            |> Jason.decode!()
+            |> Enum.chunk_every(3)
+            |> Enum.map(fn [dir, col_name, value] ->
+              {{String.to_existing_atom(dir), String.to_existing_atom(col_name)}, value}
+            end)
+
+          {:ok, decoded_cursor}
         end
 
         defp decode(%Absinthe.Blueprint.Input.Null{}) do
@@ -1600,9 +1616,13 @@ defmodule AbsintheGen.SchemaGenerator do
 
         defp encode(nil), do: nil
         defp encode(""), do: nil
-        defp encode({{dir, col_name}, value}),
-          do: [dir, col_name, value] |> Jason.encode!() |> Base.encode64()
-
+        defp encode(cursor_values) when is_list(cursor_values) do
+          Enum.reduce(cursor_values, [], fn {{dir, col_name}, value}, acc ->
+            Enum.concat(acc, [dir, col_name, value])
+          end)
+          |> Jason.encode!()
+          |> Base.encode64()
+        end
       end
 
     """
@@ -1762,8 +1782,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    #{description}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  \"\"\""}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          #{description}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        \"\"\""}
       end
       """
 
