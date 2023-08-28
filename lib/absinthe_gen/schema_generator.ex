@@ -1193,7 +1193,7 @@ defmodule AbsintheGen.SchemaGenerator do
           cond do
             !is_nil(first) ->
               if length(total_nodes) > first do
-                Enum.slice(total_nodes, 0..-1)
+                Enum.slice(total_nodes, 0..-2)
               else
                 total_nodes
               end
