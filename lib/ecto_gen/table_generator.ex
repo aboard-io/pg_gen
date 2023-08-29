@@ -312,6 +312,31 @@ defmodule EctoGen.TableGenerator do
   end
 
   def dynamic_query_template(module_name) do
+    app_name = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
+    extend_module = Module.concat(Elixir, "#{app_name}Web.Schema.Extends")
+
+    [non_unique_sort_fields] =
+      Utils.maybe_apply(
+        extend_module,
+        "non_unique_sort_fields",
+        [],
+        []
+      )
+
+    non_unique_sort_fields_query_conditions =
+      non_unique_sort_fields
+      |> Enum.map(fn field ->
+        """
+          defp get_pagination_query_condition(:desc, value, :#{field}) do
+            %{less_than_or_equal_to: value}
+          end
+
+          defp get_pagination_query_condition(:asc, value, :#{field}) do
+            %{greater_than_or_equal_to: value}
+          end
+        """
+      end)
+
     """
       defmodule #{module_name}.Repo.Filter do
         @moduledoc \"\"\"
@@ -599,18 +624,10 @@ defmodule EctoGen.TableGenerator do
           end
         end
 
-        # TODO create a schema extension that's like, @non_unique_sort_fields [:rank]
-        # or something to that effect
-        defp get_pagination_query_condition(:desc, value, :rank) do
-          %{less_than_or_equal_to: value}
-        end
+        #{non_unique_sort_fields_query_conditions |> Enum.join("\n")}
 
         defp get_pagination_query_condition(:desc, value, _column) do
           %{less_than: value}
-        end
-
-        defp get_pagination_query_condition(:asc, value, :rank) do
-          %{greater_than_or_equal_to: value}
         end
 
         defp get_pagination_query_condition(:asc, value, _column) do
