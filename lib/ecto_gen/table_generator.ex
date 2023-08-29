@@ -312,6 +312,31 @@ defmodule EctoGen.TableGenerator do
   end
 
   def dynamic_query_template(module_name) do
+    app_name = PgGen.LocalConfig.get_app_name() |> Macro.camelize()
+    extend_module = Module.concat(Elixir, "#{app_name}Web.Schema.Extends")
+
+    [non_unique_sort_fields] =
+      Utils.maybe_apply(
+        extend_module,
+        "non_unique_sort_fields",
+        [],
+        []
+      )
+
+    non_unique_sort_fields_query_conditions =
+      non_unique_sort_fields
+      |> Enum.map(fn field ->
+        """
+          defp get_pagination_query_condition(:desc, value, :#{field}) do
+            %{less_than_or_equal_to: value}
+          end
+
+          defp get_pagination_query_condition(:asc, value, :#{field}) do
+            %{greater_than_or_equal_to: value}
+          end
+        """
+      end)
+
     """
       defmodule #{module_name}.Repo.Filter do
         @moduledoc \"\"\"
@@ -562,26 +587,50 @@ defmodule EctoGen.TableGenerator do
                 nil ->
                   query
 
+                # We're paginating via before
+                order_by_args when is_list(order_by_args) ->
+                  Enum.reduce(order_by_args, query, fn {{_dir, field} = order_by, value}, query_acc ->
+                    {final_dir, _column} = order_by = sort_with_limit(order_by, opts)
+
+                    query_acc
+                    |> where(
+                      ^build_condition(field, get_pagination_query_condition(final_dir, value, field))
+                    )
+                  end)
+
                 {{_dir, field} = order_by, value} ->
-                  {final_dir, _column} = order_by = sort_with_limit(order_by, opts)
+                  {final_dir, _column} = sort_with_limit(order_by, opts)
 
                   query
-                  |> where(^build_condition(field, get_pagination_query_condition(final_dir, value)))
-                  |> order_by(^order_by)
+                  |> where(
+                    ^build_condition(field, get_pagination_query_condition(final_dir, value, field))
+                  )
               end
 
-            {{dir, field} = order_by, value} ->
+            # We're paginating via after
+            order_by_args when is_list(order_by_args) ->
+              Enum.reduce(order_by_args, query, fn {{dir, field}, value}, query_acc ->
+                query_acc
+                |> where(^build_condition(field, get_pagination_query_condition(dir, value, field)))
+
+                # |> order_by(^sort_with_limit(order_by, opts))
+              end)
+
+            {{dir, field}, value} ->
               query
-              |> where(^build_condition(field, get_pagination_query_condition(dir, value)))
-              |> order_by(^sort_with_limit(order_by, opts))
+              |> where(^build_condition(field, get_pagination_query_condition(dir, value, field)))
+
+              # |> order_by(^sort_with_limit(order_by, opts))
           end
         end
 
-        defp get_pagination_query_condition(:desc, value) do
+        #{non_unique_sort_fields_query_conditions |> Enum.join("\n")}
+
+        defp get_pagination_query_condition(:desc, value, _column) do
           %{less_than: value}
         end
 
-        defp get_pagination_query_condition(:asc, value) do
+        defp get_pagination_query_condition(:asc, value, _column) do
           %{greater_than: value}
         end
       end

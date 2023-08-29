@@ -92,6 +92,10 @@ defmodule PgGen.Schema do
     generate_strings(:allow_list, contents)
   end
 
+  defmacro non_unique_sort_fields(contents) do
+    generate_strings(:non_unique_sort_fields, contents)
+  end
+
   defmacro import_types(contents) do
     generate_strings(:imports, contents)
   end
