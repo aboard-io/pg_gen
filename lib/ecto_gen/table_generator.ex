@@ -67,6 +67,7 @@ defmodule EctoGen.TableGenerator do
       built_attributes
       |> Stream.filter(fn
         {:field, name, _, _} -> !(name in overrides)
+        {:belongs_to, name, _, _} -> !(name in overrides)
         _ -> true
       end)
       |> Stream.map(&FieldGenerator.to_string/1)
