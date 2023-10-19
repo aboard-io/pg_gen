@@ -90,6 +90,7 @@ defmodule PgGen.Extend do
           {:field, _, [fn_atom | _]} -> to_string(fn_atom)
           {:has_many, _, [fn_atom | _]} -> to_string(fn_atom)
           {:many_to_many, _, [fn_atom | _]} -> to_string(fn_atom)
+          {:belongs_to, _, [fn_atom | _]} -> to_string(fn_atom)
           {:input_object, _, [fn_atom | _]} -> to_string(fn_atom)
           {:object, _, [fn_atom | _]} -> to_string(fn_atom)
         end
