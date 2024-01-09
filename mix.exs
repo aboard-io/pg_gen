@@ -22,6 +22,8 @@ defmodule PgGen.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      # for code reloading
+      {:phoenix, "~> 1.7.0"},
       {:neuron, "~> 5.0.0"},
       {:jason, "~> 1.2"},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
