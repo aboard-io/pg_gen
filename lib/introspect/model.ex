@@ -585,11 +585,11 @@ defmodule Introspection.Model do
 
     return_type =
       if args_count < length(arg_names) do
-        return_type_names = Enum.slice(arg_names, args_count..-1)
+        return_type_names = Enum.slice(arg_names, args_count..-1//1)
 
         record_attr_types =
           arg_type_ids
-          |> Enum.slice(args_count..-1)
+          |> Enum.slice(args_count..-1//1)
           |> Enum.with_index(fn type_id, index ->
             add_type_for_attribute(
               %{type_id: type_id, name: Enum.at(return_type_names, index)},

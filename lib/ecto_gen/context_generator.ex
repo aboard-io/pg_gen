@@ -327,7 +327,7 @@ defmodule EctoGen.ContextGenerator do
             # if this is the first pass with a default arg, we want to build
             # the function  using all the args except for the last one. We pad
             # the function call with the :empty atom
-            range_for_args = 0..(length(arg_names) - 1 - n)
+            range_for_args = 0..(length(arg_names) - 1 - n)//1
 
             simple_args_str =
               arg_names

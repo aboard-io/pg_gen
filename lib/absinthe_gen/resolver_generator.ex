@@ -253,7 +253,7 @@ defmodule AbsintheGen.ResolverGenerator do
     args_for_context = Enum.join(arg_names, ", ")
 
     strict_args_count = args_count - args_with_default_count
-    required_arg_names = Enum.slice(arg_names, 0..(strict_args_count - 1))
+    required_arg_names = Enum.slice(arg_names, 0..(strict_args_count - 1)//1)
     optional_arg_names = Enum.slice(arg_names, strict_args_count..args_count)
 
     has_args = length(arg_names) > 0

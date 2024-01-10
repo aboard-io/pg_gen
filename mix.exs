@@ -5,10 +5,9 @@ defmodule PgGen.MixProject do
     [
       app: :pg_gen,
       version: "0.1.0",
-      elixir: "~> 1.12",
+      elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
-      deps: deps(),
-      xref: [exclude: [Phoenix.CodeReloader]]
+      deps: deps()
     ]
   end
 

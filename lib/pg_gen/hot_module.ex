@@ -62,7 +62,7 @@ defmodule PgGen.HotModule do
       module_name = PgGen.LocalConfig.get_app_name() <> "Web.Endpoint"
 
       Module.concat(Elixir, module_name)
-      |> Phoenix.CodeReloader.reload!()
+      |> Phoenix.CodeReloader.reload!([])
     else
       IEx.Helpers.recompile()
     end

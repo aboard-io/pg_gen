@@ -197,7 +197,7 @@ defmodule Introspection do
 
         case Regex.run(match_re, curr) do
           [match | _rest] ->
-            key = String.slice(match, 1..-1)
+            key = String.slice(match, 1..-1//1)
             value = if match == curr, do: true, else: String.replace(curr, match, "")
             # const value = match[0] === curr ? true : curr.replace(match[0], "");
 
