@@ -28,7 +28,7 @@ defmodule PgGen.HotModule do
         if is_nil(module_name) do
           IO.puts code_str
           IO.inspect opts
-          Logger.warn "Something wrong with the above"
+          Logger.warning("Something wrong with the above")
         end
 
         # contents = Code.string_to_quoted!(code_body)

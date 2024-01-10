@@ -48,7 +48,7 @@ defmodule PgGen.Notifications do
 
   @impl true
   def handle_info(_event, state) do
-    Logger.warn("!!! Notifications.handle_info something strange shows up")
+    Logger.warning("!!! Notifications.handle_info something strange shows up")
 
     {:noreply, state}
   end

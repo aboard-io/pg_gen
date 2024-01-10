@@ -60,7 +60,7 @@ defmodule EctoGen.ContextGenerator do
 
     unless table.selectable || table.insertable || table.updatable || table.deletable ||
              has_custom_functions do
-      # Logger.warn("This table is no good: #{table.name}")
+      # Logger.warning("This table is no good: #{table.name}")
       {name, nil}
     else
       module = """

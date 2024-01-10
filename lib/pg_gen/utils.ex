@@ -26,6 +26,7 @@ defmodule PgGen.Utils do
       _ ->
         IO.puts(code_str)
         IO.puts("Something wrong with the above code string")
+        File.write!("./scratch.ex", code_str)
     end
   end
 

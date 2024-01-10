@@ -8,7 +8,7 @@ defmodule Mix.Tasks.PgGen.GenerateEcto do
   Generate Ecto schemas
   """
   def run(_args) do
-    Logger.warn("Currently not up to date; noop")
+    Logger.warning("Currently not up to date; noop")
     # {options, _, _} =
     #   OptionParser.parse(args,
     #     strict: [schema: :string, database: :string],
