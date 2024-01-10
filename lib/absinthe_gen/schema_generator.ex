@@ -631,14 +631,13 @@ defmodule AbsintheGen.SchemaGenerator do
          ) do
         ""
       else
-        input_object =
-          generate_create_input_object(
-            input_name,
-            table.attributes,
-            extensions_module,
-            extensions_module_exists,
-            excluded_fields
-          )
+        generate_create_input_object(
+          input_name,
+          table.attributes,
+          extensions_module,
+          extensions_module_exists,
+          excluded_fields
+        )
       end
 
     payload = generate_mutation_payload(singular_underscore_table_name, "create")
