@@ -591,7 +591,7 @@ defmodule EctoGen.TableGenerator do
                 # We're paginating via before
                 order_by_args when is_list(order_by_args) ->
                   Enum.reduce(order_by_args, query, fn {{_dir, field} = order_by, value}, query_acc ->
-                    {final_dir, _column} = order_by = sort_with_limit(order_by, opts)
+                    {final_dir, _column} = sort_with_limit(order_by, opts)
 
                     query_acc
                     |> where(
