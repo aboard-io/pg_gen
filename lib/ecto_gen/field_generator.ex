@@ -2,6 +2,7 @@ defmodule EctoGen.FieldGenerator do
   @type_map %{
     "text" => "string",
     "citext" => "string",
+    "bpchar" => "string",
     "timestamptz" => "utc_datetime_usec",
     "timestamp" => "utc_datetime",
     "uuid" => "Ecto.UUID",
