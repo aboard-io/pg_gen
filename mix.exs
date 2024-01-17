@@ -23,7 +23,7 @@ defmodule PgGen.MixProject do
     [
       # for code reloading
       {:phoenix, "~> 1.7.0"},
-      {:neuron, "~> 5.0.0"},
+      {:neuron, "~> 5.1.0"},
       {:jason, "~> 1.2"},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:ex_unit_notifier, "~> 1.2", only: :test},
