@@ -999,7 +999,7 @@ defmodule AbsintheGen.SchemaGenerator do
             query =
               from(queryable)
               |> Repo.Filter.apply(args)
-              |> select([_], count())
+              |> select([q0], %{count: count(q0.id)})
 
             # FIXME This is a little hacky. Basically bindings are tough to reason
             # about, and you can't get overly clever/dynamic with them, as far as I
