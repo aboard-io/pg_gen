@@ -14,8 +14,8 @@ defmodule EctoGen.FieldGenerator do
     "bytea" => "binary",
     "enum" => "Ecto.Enum",
     # FIXME this should not be hard coded but for now all we need is a sensible money type
-    "numeric" => "decimal, precision: 10, scale: 2",
-    "decimal" => "decimal, precision: 10, scale: 2"
+    "numeric" => "decimal, scale: 2",
+    "decimal" => "decimal, scale: 2"
   }
 
   @type_list Enum.map(@type_map, fn {k, _} -> k end)
