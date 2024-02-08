@@ -279,6 +279,8 @@ defmodule AbsintheGen.SchemaGenerator do
       alias #{module_name_web}.Resolvers.Connections
       alias #{module_name}.Contexts
 
+      @dialyzer {:no_return, {:context, 1}}
+
       #{connections}
 
       #{scalar_filters}
@@ -955,6 +957,8 @@ defmodule AbsintheGen.SchemaGenerator do
       alias #{app_name}Web.Resolvers.Utils
       alias #{app_name}.Repo
       alias #{app_name}.Contexts.Cache
+
+      @dialyzer {:no_return, {:data, 1}}
 
     #{if cacheable_fields do
       "@cache_ttl #{cache_ttl || :timer.minutes(10)}"
