@@ -905,7 +905,7 @@ defmodule AbsintheGen.SchemaGenerator do
     """
     def context(ctx) do
       loader =
-        Dataloader.new(async: false)
+        Dataloader.new()
         #{sources}
 
       Map.put(ctx, :loader, loader)
