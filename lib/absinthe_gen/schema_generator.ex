@@ -900,7 +900,7 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Stream.map(fn %{name: name} ->
         singular_camelized_table = name |> PgGen.Utils.singularize() |> Macro.camelize()
 
-        "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Connections.data(Contexts.#{singular_camelized_table}))"
+        "|> Dataloader.add_source(#{app_name}.Repo.#{singular_camelized_table}, Connections.data(Contexts.#{singular_camelized_table}, ctx))"
       end)
       |> Enum.join("\n")
 
@@ -958,7 +958,7 @@ defmodule AbsintheGen.SchemaGenerator do
       alias #{app_name}.Repo
       alias #{app_name}.Contexts.Cache
 
-      @dialyzer {:no_return, {:data, 1}}
+      @dialyzer {:no_return, {:data, 2}}
 
     #{if cacheable_fields do
       "@cache_ttl #{cache_ttl || :timer.minutes(10)}"
@@ -974,10 +974,13 @@ defmodule AbsintheGen.SchemaGenerator do
       @doc \"\"\"
       This function sets up the dataloader source.
       \"\"\"
-      def data(context_module) do
+      def data(context_module, context) do
         query_fun = query(context_module)
+        repo =
+          context
+          |> Map.get(:repo, Repo)
 
-        Dataloader.Ecto.new(#{app_name}.Repo,
+        Dataloader.Ecto.new(repo,
           query: query_fun,
           async: false,
           repo_opts: [in_parallel: false]

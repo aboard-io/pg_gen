@@ -77,7 +77,6 @@ defmodule AbsintheGen.ResolverGenerator do
 
         #{if selectable do
         select_name = "#{singular_underscore_table_name}"
-        is_cacheable = root_query_is_cacheable(app_name, select_name)
 
         unless extensions_module_exists && select_name in extensions_module.overrides() do
           """
@@ -88,7 +87,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
 
-          case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections#{if is_cacheable, do: ", info.context", else: ""}) do
+          case #{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, computed_selections, info.context) do
               :error -> {:error, "Could not find an #{singular_camelized_table_name} with that id"}
               result -> {:ok, result}
             end
@@ -114,7 +113,7 @@ defmodule AbsintheGen.ResolverGenerator do
                 #{app_atom}.Repo.#{singular_camelized_table_name}
               )
 
-            nodes = if Resolvers.Utils.has_nodes?(info), do: #{singular_camelized_table_name}.list_#{name}(args, computed_selections), else: []
+            nodes = if Resolvers.Utils.has_nodes?(info), do: #{singular_camelized_table_name}.list_#{name}(args, computed_selections, info.context), else: []
 
             Resolvers.Connections.return_nodes(
               nodes,

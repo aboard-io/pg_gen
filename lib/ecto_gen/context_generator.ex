@@ -140,10 +140,12 @@ defmodule EctoGen.ContextGenerator do
       else
         ""
       end}
-      def #{get_name}(id, computed_selections#{if is_cacheable, do: ",_", else: "\\\\ []"}) do
+      def #{get_name}(id, computed_selections#{unless is_cacheable, do: "\\\\ []"}, context#{unless is_cacheable, do: "\\\\ %{}"}) do
+        repo = context |> Map.get(:repo, Repo)
+
         case from(#{table_name})
         |> with_computed_columns(computed_selections)
-        |> Repo.get(id) do
+        |> repo.get(id) do
           nil -> :error
         result -> result |> Utils.cast_computed_selections(
             #{table_name}.computed_fields_with_types(computed_selections)
@@ -155,7 +157,9 @@ defmodule EctoGen.ContextGenerator do
 
     #{if list_name not in overrides do
       """
-      def list_#{PgGen.Utils.pluralize(lower_case_table_name)}(args, computed_selections \\\\ []) do
+      def list_#{PgGen.Utils.pluralize(lower_case_table_name)}(args, computed_selections \\\\ [], context \\\\ %{}) do
+        repo = context |> Map.get(:repo, Repo)
+
         from(#{table_name})
         |> Connections.query(__MODULE__).(
           Map.merge(args, %{
@@ -164,7 +168,7 @@ defmodule EctoGen.ContextGenerator do
             }
           })
         )
-        |> Repo.all()
+        |> repo.all()
         |> Enum.map(
           &Utils.cast_computed_selections(
             &1,
