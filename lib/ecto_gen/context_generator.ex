@@ -214,15 +214,16 @@ defmodule EctoGen.ContextGenerator do
       ""
     else
       """
-      def create_#{singular_lowercase}(attrs) do
+      def create_#{singular_lowercase}(attrs, context) do
+        repo = context |> Map.get(:repo, Repo)
         #{if preload, do: "result = ", else: ""}
         %#{table_name}{}
         |> #{table_name}.changeset(attrs)
-        |> Repo.insert(returning: true)
+        |> repo.insert(returning: true)
         #{if preload do
         """
         case result do
-          {:ok, record} -> {:ok, Repo.preload(record, #{Macro.to_string(preload)})}
+          {:ok, record} -> {:ok, repo.preload(record, #{Macro.to_string(preload)})}
           error -> error
         end
         """
@@ -249,15 +250,16 @@ defmodule EctoGen.ContextGenerator do
       ""
     else
       """
-      def update_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, attrs) do
+      def update_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, attrs, context) do
+        repo = context |> Map.get(:repo, Repo)
         #{if preload, do: "result = ", else: ""}
         #{singular_lowercase}
         |> #{table_name}.changeset(attrs)
-        |> Repo.update(returning: true)
+        |> repo.update(returning: true)
         #{if preload do
         """
         case result do
-          {:ok, record} -> {:ok, Repo.preload(record, #{Macro.to_string(preload)})}
+          {:ok, record} -> {:ok, repo.preload(record, #{Macro.to_string(preload)})}
           error -> error
         end
         """
@@ -282,9 +284,10 @@ defmodule EctoGen.ContextGenerator do
       ""
     else
       """
-      def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}) do
+      def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, context) do
+        repo = context |> Map.get(:repo, Repo)
         #{singular_lowercase}
-        |> Repo.delete(stale_error_field: :__meta__, stale_error_message: "You don't have permission to delete this #{singular_lowercase}")
+        |> repo.delete(stale_error_field: :__meta__, stale_error_message: "You don't have permission to delete this #{singular_lowercase}")
       end
       """
     end
@@ -451,16 +454,17 @@ defmodule EctoGen.ContextGenerator do
 
     if table.selectable do
       """
-      def #{name}(#{if has_args, do: "#{args},"} args) do
+      def #{name}(#{if has_args, do: "#{args},"} args, context) do
+        repo = context |> Map.get(:repo, Repo)
         from(t in Repo.#{repo_name},
         join: s in fragment("select * from #{schema}.#{name}(#{question_marks})"#{if has_args, do: ", #{pinned_args_string}"}),
         on: s.id == t.id)
           |> Repo.Filter.apply(args)
-          |> Repo.all()
+          |> repo.all()
       end
       """
     else
-      simple_args_str = Enum.join(arg_names, ", ")
+      simple_args_str = Enum.join(arg_names ++ ["context"], ", ")
       args_str = generate_args_str(arg_types)
 
       repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
@@ -470,7 +474,8 @@ defmodule EctoGen.ContextGenerator do
 
       """
       def #{name}(#{simple_args_str}) do
-        case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+        repo = context |> Map.get(:repo, Repo)
+        case repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
           {:ok, result} ->
             Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1}))
 
@@ -498,7 +503,7 @@ defmodule EctoGen.ContextGenerator do
     strict_args_count = args_count - args_with_default_count
     optional_arg_names = Enum.slice(arg_names, strict_args_count..args_count)
 
-    simple_args_str = Enum.join(arg_names, ", ")
+    simple_args_str = Enum.join(arg_names ++ ["context"], ", ")
     args_str = generate_args_str(arg_types, optional_arg_names)
 
     repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
@@ -510,10 +515,11 @@ defmodule EctoGen.ContextGenerator do
 
     """
     def #{name}(#{simple_args_str}) do
+      repo = context |> Map.get(:repo, Repo)
         #{if args_with_default_count == 0 do
       arg_positions = arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
       """
-      case Repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+      case repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
       """
     else
       """
@@ -530,7 +536,7 @@ defmodule EctoGen.ContextGenerator do
           Enum.with_index(args_with_values, fn {arg, _}, index -> "#\{arg} => $#\{index + 1}" end)
           |> Enum.join(", ")
 
-        case Repo.query("select * from #{schema}.#{name}(#\{args})", values) do
+        case repo.query("select * from #{schema}.#{name}(#\{args})", values) do
       """
     end}
         {:ok, result} ->
@@ -569,8 +575,9 @@ defmodule EctoGen.ContextGenerator do
       end
 
     """
-    def #{simplified_name}(#{arg_strs}) do
-        case Repo.query(
+    def #{simplified_name}(#{arg_strs}, context) do
+        repo = context |> Map.get(:repo, Repo)
+        case repo.query(
         \"\"\"
         select #{schema}.#{name}($1)
         \"\"\",

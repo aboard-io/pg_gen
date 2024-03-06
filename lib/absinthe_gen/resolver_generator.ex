@@ -133,8 +133,8 @@ defmodule AbsintheGen.ResolverGenerator do
         insert_name = "create_#{singular_underscore_table_name}"
         unless extensions_module_exists && insert_name in extensions_module.overrides() do
           """
-          def create_#{singular_underscore_table_name}(parent, %{input: input}, _) do
-            case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input) do
+          def create_#{singular_underscore_table_name}(parent, %{input: input}, info) do
+            case #{app_name}.Contexts.#{singular_camelized_table_name}.create_#{singular_underscore_table_name}(input, info.context) do
               {:ok, #{singular_underscore_table_name}} ->
                 {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
               {:error, changeset} ->
@@ -156,9 +156,9 @@ defmodule AbsintheGen.ResolverGenerator do
         update_name = "update_#{singular_underscore_table_name}"
         unless extensions_module_exists && update_name in extensions_module.overrides() do
           """
-          def update_#{singular_underscore_table_name}(parent, %{input: input}, _) do
-            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
-            case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch) do
+          def update_#{singular_underscore_table_name}(parent, %{input: input}, info) do
+            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id, info.context)
+            case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch, info.context) do
               {:ok, #{singular_underscore_table_name}} ->
                 {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
               {:error, changeset} ->
@@ -179,9 +179,9 @@ defmodule AbsintheGen.ResolverGenerator do
         delete_name = "delete_#{singular_underscore_table_name}"
         unless extensions_module_exists && delete_name in extensions_module.overrides() do
           """
-          def #{delete_name}(parent, %{id: id}, _) do
+          def #{delete_name}(parent, %{id: id}, info) do
             #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
-            case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}) do
+            case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}, info.context) do
               {:ok, #{singular_underscore_table_name}} ->
                 {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
               {:error, changeset} ->
@@ -260,7 +260,7 @@ defmodule AbsintheGen.ResolverGenerator do
     argument_string = if is_stable, do: "args", else: "args.input"
 
     """
-    def #{name}(_, args, _) do
+    def #{name}(_, args, info) do
       #{if has_args do
       """
       %{
@@ -273,11 +273,11 @@ defmodule AbsintheGen.ResolverGenerator do
     end}
       #{if table.selectable do
       """
-      {:ok, %{nodes: #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context},"} args), args: args}}
+      {:ok, %{nodes: #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context},"} args, info.context), args: args}}
       """
     else
       """
-      case #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context}"}) do
+      case #{context_module_str}.#{name}(#{if has_args, do: "#{args_for_context}, info.context", else: "info.context"}) do
         {:error, reason} ->
           {:error, reason}
 
@@ -317,7 +317,7 @@ defmodule AbsintheGen.ResolverGenerator do
     argument_string = if is_stable, do: "args", else: "args.input"
 
     """
-    def #{name}(#{if is_stable, do: "_", else: ""}parent, #{if has_args, do: "args", else: "_"}, _) do
+    def #{name}(#{if is_stable, do: "_", else: ""}parent, #{if has_args, do: "args", else: "_"}, info) do
       #{if has_args do
       """
       %{
@@ -385,10 +385,10 @@ defmodule AbsintheGen.ResolverGenerator do
         singular_camelized_table_name
       ) do
     """
-    def #{simplified_name}(parent, _, _) do
+    def #{simplified_name}(parent, _, info) do
       case Map.get(parent, :#{simplified_name}) do
         nil ->
-          case #{singular_camelized_table_name}.#{simplified_name}(parent) do
+          case #{singular_camelized_table_name}.#{simplified_name}(parent, info.context) do
             {:error, reason} -> {:error, reason}
             result -> {:ok, result}
           end
@@ -510,19 +510,19 @@ defmodule AbsintheGen.ResolverGenerator do
   end
 
   defp get_custom_return_value(context_module_str, name, arg_names, return_type_name, is_stable) do
-    args_for_context = Enum.join(arg_names, ", ")
+    args_for_context = Enum.join(arg_names ++ ["info.context"], ", ")
     return_type_str = Inflex.singularize(return_type_name)
 
     if is_stable do
       """
-      case #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"}) do
+      case #{context_module_str}.#{name}(#{args_for_context}) do
         {:error, reason} -> {:error, reason}
         result -> {:ok, result}
       end
       """
     else
       """
-      case #{context_module_str}.#{name}(#{if length(arg_names) > 0, do: "#{args_for_context}"}) do
+      case #{context_module_str}.#{name}(#{args_for_context}) do
         {:error, reason} ->
           {:error, reason}
 
