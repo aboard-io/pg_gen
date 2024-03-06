@@ -355,10 +355,11 @@ defmodule AbsintheGen.ResolverGenerator do
           |> Enum.map(fn name ->
             "Map.get(#{arg_var}, :#{name}, :empty)"
           end)
+          |> Kernel.++(["info.context"])
           |> Enum.join(", ")
 
         """
-        def #{name}(_, #{if has_args, do: "args", else: "_"}, _) do
+        def #{name}(_, #{if has_args, do: "args", else: "_"}, info) do
           case #{module_name}.Contexts.PgFunctions.#{name}(#{arg_names_str}) do
             {:error, error = %{message: _}} ->
                 {:error, error}

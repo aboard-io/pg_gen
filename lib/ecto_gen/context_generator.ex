@@ -369,8 +369,9 @@ defmodule EctoGen.ContextGenerator do
 
             """
 
-            def #{name}(#{simple_args_str}) do
-              case Repo.query("select #{schema}.#{name}(#{numbered_args})", [#{args_str}]) do
+            def #{name}(#{add_context(String.trim(simple_args_str))}) do
+              repo = context |> Map.get(:repo, Repo)
+              case repo.query("select #{schema}.#{name}(#{numbered_args})", [#{args_str}]) do
                 {:ok, %Postgrex.Result{ rows: #{return_match}}} ->
                   #{result_str}
                 {:error, %Postgrex.Error{} = error} -> {:error, error.postgres}
@@ -702,4 +703,7 @@ defmodule EctoGen.ContextGenerator do
     extensions_module = Module.concat(Elixir, module_name)
     Utils.maybe_apply(extensions_module, :preloads, [], %{})
   end
+
+  def add_context(""), do: "context"
+  def add_context(args), do: "#{args}, context"
 end
