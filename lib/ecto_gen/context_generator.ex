@@ -125,13 +125,13 @@ defmodule EctoGen.ContextGenerator do
         """
         def #{get_name}(id, computed_selections \\\\ [], context \\\\ %{})
 
-        def #{get_name}(id, computed_selections, %{current_user: nil} = context) do
+        def #{get_name}(id, computed_selections, %{use_cache: true} = context) do
           cache_key = {:#{singular_table_name}, id}
 
           if value = #{app_module_name}.Contexts.Cache.get(cache_key) do
             value
           else
-            result = #{get_name}(id, computed_selections, context)
+            result = #{get_name}(id, computed_selections, Map.delete(context, :use_cache))
             #{app_module_name}.Contexts.Cache.put(cache_key, result, ttl: #{cache_ttl})
             result
           end
