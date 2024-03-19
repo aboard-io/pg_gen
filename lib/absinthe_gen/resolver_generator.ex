@@ -157,7 +157,7 @@ defmodule AbsintheGen.ResolverGenerator do
         unless extensions_module_exists && update_name in extensions_module.overrides() do
           """
           def update_#{singular_underscore_table_name}(parent, %{input: input}, info) do
-            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id)
+            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(input.id, [], info.context)
             case #{app_name}.Contexts.#{singular_camelized_table_name}.update_#{singular_underscore_table_name}(#{singular_underscore_table_name}, input.patch, info.context) do
               {:ok, #{singular_underscore_table_name}} ->
                 {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
