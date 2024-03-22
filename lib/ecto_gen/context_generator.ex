@@ -141,7 +141,7 @@ defmodule EctoGen.ContextGenerator do
         ""
       end}
       def #{get_name}(id, computed_selections#{unless is_cacheable, do: "\\\\ []"}, context#{unless is_cacheable, do: "\\\\ %{}"}) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
 
         case from(#{table_name})
         |> with_computed_columns(computed_selections)
@@ -158,7 +158,7 @@ defmodule EctoGen.ContextGenerator do
     #{if list_name not in overrides do
       """
       def list_#{PgGen.Utils.pluralize(lower_case_table_name)}(args, computed_selections \\\\ [], context \\\\ %{}) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
 
         from(#{table_name})
         |> Connections.query(__MODULE__).(
@@ -215,7 +215,7 @@ defmodule EctoGen.ContextGenerator do
     else
       """
       def create_#{singular_lowercase}(attrs, context) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
         #{if preload, do: "result = ", else: ""}
         %#{table_name}{}
         |> #{table_name}.changeset(attrs)
@@ -251,7 +251,7 @@ defmodule EctoGen.ContextGenerator do
     else
       """
       def update_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, attrs, context) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
         #{if preload, do: "result = ", else: ""}
         #{singular_lowercase}
         |> #{table_name}.changeset(attrs)
@@ -285,7 +285,7 @@ defmodule EctoGen.ContextGenerator do
     else
       """
       def delete_#{singular_lowercase}(%#{table_name}{} = #{singular_lowercase}, context) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
         #{singular_lowercase}
         |> repo.delete(stale_error_field: :__meta__, stale_error_message: "You don't have permission to delete this #{singular_lowercase}")
       end
@@ -373,7 +373,7 @@ defmodule EctoGen.ContextGenerator do
             """
 
             def #{name}(#{add_context(String.trim(simple_args_str))}) do
-              repo = context |> Map.get(:repo, Repo)
+              repo = context |> Map.get(:repo)
               case repo.query("select #{schema}.#{name}(#{numbered_args})", [#{args_str}]) do
                 {:ok, %Postgrex.Result{ rows: #{return_match}}} ->
                   #{result_str}
@@ -455,7 +455,7 @@ defmodule EctoGen.ContextGenerator do
     if table.selectable do
       """
       def #{name}(#{if has_args, do: "#{args},"} args, context) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
         from(t in Repo.#{repo_name},
         join: s in fragment("select * from #{schema}.#{name}(#{question_marks})"#{if has_args, do: ", #{pinned_args_string}"}),
         on: s.id == t.id)
@@ -474,7 +474,7 @@ defmodule EctoGen.ContextGenerator do
 
       """
       def #{name}(#{simple_args_str}) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
         case repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
           {:ok, result} ->
             Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1}))
@@ -515,7 +515,7 @@ defmodule EctoGen.ContextGenerator do
 
     """
     def #{name}(#{simple_args_str}) do
-      repo = context |> Map.get(:repo, Repo)
+      repo = context |> Map.get(:repo)
         #{if args_with_default_count == 0 do
       arg_positions = arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
       """
@@ -576,7 +576,7 @@ defmodule EctoGen.ContextGenerator do
 
     """
     def #{simplified_name}(#{arg_strs}, context) do
-        repo = context |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
         case repo.query(
         \"\"\"
         select #{schema}.#{name}($1)
