@@ -976,9 +976,7 @@ defmodule AbsintheGen.SchemaGenerator do
       \"\"\"
       def data(context_module, context) do
         query_fun = query(context_module)
-        repo =
-          context
-          |> Map.get(:repo, Repo)
+        repo = context |> Map.get(:repo)
 
         Dataloader.Ecto.new(repo,
           query: query_fun,
@@ -1084,7 +1082,7 @@ defmodule AbsintheGen.SchemaGenerator do
           # if the user is nil, check the cache first. if it's not there, resolve
           parent, args, %{context: %{current_user: nil}} = info ->
             cache_key = {field_name, parent.id, args}
-    
+
             do_cache_check(field_name, cache_key, fn ->
               resolve_many_with_dataloader({repo, field_name}, parent, args, info, cache_key)
             end)
@@ -1110,7 +1108,7 @@ defmodule AbsintheGen.SchemaGenerator do
           else
             fun.()
           end
-    
+
         _ ->
           # fun.()
           if Application.get_env(:aboard_ex, :env) == :dev do
@@ -1244,7 +1242,7 @@ defmodule AbsintheGen.SchemaGenerator do
       # if the user is nil, check the cache first. if it's not there, resolve
       parent, args, %{context: %{current_user: nil}} = info ->
         cache_key = {field_name, parent.id, args}
-    
+
         do_cache_check(field_name, cache_key, fn ->
           resolve_one_with_dataloader({repo, field_name}, parent, args, info, cache_key)
         end)
