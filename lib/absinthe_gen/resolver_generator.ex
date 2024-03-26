@@ -180,7 +180,7 @@ defmodule AbsintheGen.ResolverGenerator do
         unless extensions_module_exists && delete_name in extensions_module.overrides() do
           """
           def #{delete_name}(parent, %{id: id}, info) do
-            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id)
+            #{singular_underscore_table_name} = #{app_name}.Contexts.#{singular_camelized_table_name}.get_#{singular_underscore_table_name}!(id, [], info.context)
             case #{app_name}.Contexts.#{singular_camelized_table_name}.delete_#{singular_underscore_table_name}(#{singular_underscore_table_name}, info.context) do
               {:ok, #{singular_underscore_table_name}} ->
                 {:ok, %{#{singular_underscore_table_name}: #{singular_underscore_table_name}, query: parent}}
