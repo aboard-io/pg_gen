@@ -512,6 +512,9 @@ defmodule Introspection.Model do
         table_indexes,
         fn %{"attributeNums" => attr_nums} ->
           case attr_nums do
+            # if number is zero, it's a computed index and we don't need to use it here
+            [0] ->
+              nil
             [single_col] ->
               attr = Enum.find(table.attributes, fn %{num: num} -> num == single_col end)
               {attr.name, attr.type}
