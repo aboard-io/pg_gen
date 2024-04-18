@@ -132,7 +132,11 @@ defmodule EctoGen.ContextGenerator do
             value
           else
             result = #{get_name}(id, computed_selections, Map.delete(context, :use_cache))
-            #{app_module_name}.Contexts.Cache.put(cache_key, result, ttl: #{cache_ttl})
+
+            if result != :error do
+              #{app_module_name}.Contexts.Cache.put(cache_key, result, ttl: #{cache_ttl})
+            end
+
             result
           end
         end
