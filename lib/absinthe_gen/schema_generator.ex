@@ -397,9 +397,13 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.map(fn {name, type} ->
         type = process_type(type)
 
-        """
-        field :#{name}, #{type}
-        """
+        if type == ":json" do
+          ""
+        else
+          """
+          field :#{name}, #{type}
+          """
+        end
       end)
 
     filter_fields =
@@ -407,9 +411,13 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.map(fn {name, type} ->
         type = process_type(type)
 
-        """
-        field :#{name}, #{type}_filter
-        """
+        if type == ":json" do
+          ""
+        else
+          """
+          field :#{name}, #{type}_filter
+          """
+        end
       end)
 
     parent_table_filter_fields =
@@ -423,9 +431,13 @@ defmodule AbsintheGen.SchemaGenerator do
       |> Enum.map(fn {_assoc, name, type, _opts} ->
         type = Macro.underscore(type)
 
-        """
-        field :#{name}, :#{type}_filter
-        """
+        if type == ":json" do
+          ""
+        else
+          """
+          field :#{name}, :#{type}_filter
+          """
+        end
       end)
 
     """
