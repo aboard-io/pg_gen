@@ -455,7 +455,7 @@ defmodule AbsintheGen.SchemaGenerator do
   def generate_condition_and_filter_input(_), do: ""
 
   def generate_scalar_filters() do
-    ["datetime", "uuid4", "boolean", "string", "date", "integer", "uuid62"]
+    ["datetime", "uuid4", "boolean", "string", "date", "integer", "uuid62", "decimal"]
     |> Stream.map(&generate_input_filter/1)
     |> Enum.join("\n\n")
   end
