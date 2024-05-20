@@ -40,7 +40,7 @@ defmodule PgGen.HotModule do
         # ensure path exists
         File.mkdir_p!(Path.dirname(path))
         # write files as exs to avoid compilation
-        File.write!(path, code_str)
+        File.write!(path, code_str ++ ["\n"])
         # Could potentially speed this up with Kernel.ParallelCompiler.compile/2
         # Code.require_file(path)
         # IEx.Helpers.recompile()
