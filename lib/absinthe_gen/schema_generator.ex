@@ -117,19 +117,29 @@ defmodule AbsintheGen.SchemaGenerator do
           |> Stream.map(fn {a, b, c, opts} ->
             {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
           end)
-          |> Stream.map(fn attr ->
-            # Pass the referenced table so we know if it has indexes we can use in arguments on the field
-            FieldGenerator.to_string(
-              attr,
-              Enum.find(tables, fn %{name: name} ->
-                {_, _, rel_table, _} = attr
+          |> Stream.map(fn {_, name, _, _} = attr ->
+            if Utils.maybe_apply(
+                 extensions_module,
+                 "#{singular_underscore_table_name}_objects_extensions",
+                 [],
+                 []
+               )
+               |> Enum.any?(fn x -> String.contains?(x, "field(:" <> name <> ",") end) do
+              ""
+            else
+              # Pass the referenced table so we know if it has indexes we can use in arguments on the field
+              FieldGenerator.to_string(
+                attr,
+                Enum.find(tables, fn %{name: name} ->
+                  {_, _, rel_table, _} = attr
 
-                %{plural_underscore_table_name: plural_underscore_table_name} =
-                  get_table_names(rel_table)
+                  %{plural_underscore_table_name: plural_underscore_table_name} =
+                    get_table_names(rel_table)
 
-                name == plural_underscore_table_name
-              end)
-            )
+                  name == plural_underscore_table_name
+                end)
+              )
+            end
           end)
           |> Enum.join("\n")
       end
