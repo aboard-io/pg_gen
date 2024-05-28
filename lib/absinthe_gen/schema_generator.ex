@@ -42,6 +42,22 @@ defmodule AbsintheGen.SchemaGenerator do
     extensions_module = Module.concat(Elixir, "#{module_name}.Extend")
     extensions_module_exists = Utils.does_module_exist(extensions_module)
 
+    overrides =
+      Utils.maybe_apply(
+        extensions_module,
+        "#{singular_underscore_table_name}_objects_overrides",
+        [],
+        []
+      )
+
+    extensions =
+      Utils.maybe_apply(
+        extensions_module,
+        "#{singular_underscore_table_name}_objects_extensions",
+        [],
+        []
+      )
+
     # Build the type attributes/fields, ignoring fields with overrides
     attributes =
       built_attributes
@@ -50,30 +66,14 @@ defmodule AbsintheGen.SchemaGenerator do
         {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
       end)
       |> Enum.map(fn {_, name, _, _} = attr ->
-        unless extensions_module_exists &&
-                 name in Utils.maybe_apply(
-                   extensions_module,
-                   "#{singular_underscore_table_name}_objects_overrides",
-                   [],
-                   []
-                 ) do
+        unless name in overrides do
           FieldGenerator.to_string(attr)
         end
       end)
 
     # Append extensions to the type attributes/fields
     attributes =
-      (attributes ++
-         if(extensions_module_exists,
-           do:
-             Utils.maybe_apply(
-               extensions_module,
-               "#{singular_underscore_table_name}_objects_extensions",
-               [],
-               []
-             ),
-           else: []
-         ))
+      (attributes ++ extensions)
       |> Enum.join("\n")
 
     # Build the computed fields for the object, excluding any overrides
@@ -92,13 +92,7 @@ defmodule AbsintheGen.SchemaGenerator do
       computed_fields
       |> Stream.map(&Builder.build/1)
       |> Stream.map(fn {_, name, _, _} = attr ->
-        unless extensions_module_exists &&
-                 name in Utils.maybe_apply(
-                   extensions_module,
-                   "#{singular_underscore_table_name}_objects_overrides",
-                   [],
-                   []
-                 ) do
+        unless name in overrides do
           FieldGenerator.to_string(attr)
         end
       end)
@@ -117,29 +111,20 @@ defmodule AbsintheGen.SchemaGenerator do
           |> Stream.map(fn {a, b, c, opts} ->
             {a, b, c, Keyword.put_new(opts, :resolve_method, {:dataloader, prefix: app_name})}
           end)
+          |> Stream.reject(fn {_, name, _, _} -> name in overrides end)
           |> Stream.map(fn {_, name, _, _} = attr ->
-            if Utils.maybe_apply(
-                 extensions_module,
-                 "#{singular_underscore_table_name}_objects_extensions",
-                 [],
-                 []
-               )
-               |> Enum.any?(fn x -> String.contains?(x, "field(:" <> name <> ",") end) do
-              ""
-            else
-              # Pass the referenced table so we know if it has indexes we can use in arguments on the field
-              FieldGenerator.to_string(
-                attr,
-                Enum.find(tables, fn %{name: name} ->
-                  {_, _, rel_table, _} = attr
+            # Pass the referenced table so we know if it has indexes we can use in arguments on the field
+            FieldGenerator.to_string(
+              attr,
+              Enum.find(tables, fn %{name: name} ->
+                {_, _, rel_table, _} = attr
 
-                  %{plural_underscore_table_name: plural_underscore_table_name} =
-                    get_table_names(rel_table)
+                %{plural_underscore_table_name: plural_underscore_table_name} =
+                  get_table_names(rel_table)
 
-                  name == plural_underscore_table_name
-                end)
-              )
-            end
+                name == plural_underscore_table_name
+              end)
+            )
           end)
           |> Enum.join("\n")
       end
@@ -1104,7 +1089,7 @@ defmodule AbsintheGen.SchemaGenerator do
           # if the user is nil, check the cache first. if it's not there, resolve
           parent, args, %{context: %{current_user: nil}} = info ->
             cache_key = {field_name, parent.id, args}
-
+    
             do_cache_check(field_name, cache_key, fn ->
               resolve_many_with_dataloader({repo, field_name}, parent, args, info, cache_key)
             end)
@@ -1130,7 +1115,7 @@ defmodule AbsintheGen.SchemaGenerator do
           else
             fun.()
           end
-
+    
         _ ->
           # fun.()
           if Application.get_env(:aboard_ex, :env) == :dev do
@@ -1264,7 +1249,7 @@ defmodule AbsintheGen.SchemaGenerator do
       # if the user is nil, check the cache first. if it's not there, resolve
       parent, args, %{context: %{current_user: nil}} = info ->
         cache_key = {field_name, parent.id, args}
-
+    
         do_cache_check(field_name, cache_key, fn ->
           resolve_one_with_dataloader({repo, field_name}, parent, args, info, cache_key)
         end)
@@ -1808,8 +1793,8 @@ defmodule AbsintheGen.SchemaGenerator do
           #{if !is_stable && length(args) > 0, do: "arg :input, non_null(:#{name}_input)", else: input_object_or_args}
         resolve &Resolvers.#{resolver_module_str}.#{name}/3
           #{unless is_nil(description), do: "description \"\"\"
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          #{description}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        \"\"\""}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        #{description}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      \"\"\""}
       end
       """
 
