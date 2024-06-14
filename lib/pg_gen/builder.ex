@@ -172,6 +172,7 @@ defmodule PgGen.Builder do
     options =
       build_reference_options(attribute, referenced_table, table_name, external_reference: false)
       |> Keyword.merge(build_field_options(attribute))
+      |> Keyword.put(:type, attribute.type.name)
 
     {:belongs_to, (format_assoc(options[:fk], table_name) || table_name) |> Inflex.singularize(),
      table_name_to_queryable(table_name), Keyword.put_new(options, :fk_type, attribute.type.name)}
