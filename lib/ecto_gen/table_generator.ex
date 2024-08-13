@@ -25,6 +25,17 @@ defmodule EctoGen.TableGenerator do
       end)
       |> Enum.to_list()
 
+    nullable_fields =
+      built_attributes
+      |> Stream.filter(&is_nullable/1)
+      |> Enum.map(fn
+        {:field, name, _, _} ->
+          ":#{name}"
+
+        {:belongs_to, name, _, opts} ->
+          ":" <> Keyword.get(opts, :fk, "#{name}_id")
+      end)
+
     required_fields =
       built_attributes
       |> Stream.filter(&is_required/1)
@@ -223,6 +234,10 @@ defmodule EctoGen.TableGenerator do
           \"\"\"
           def pg_columns() do
             @pg_columns
+          end
+
+          def nullable_fields() do
+            [#{Enum.join(nullable_fields, ", ")}]
           end
 
 
@@ -637,6 +652,11 @@ defmodule EctoGen.TableGenerator do
       end
     """
     |> Utils.format_code!()
+  end
+
+  def is_nullable({_, _, _, opts}) do
+    Keyword.get(opts, :is_not_null) == false &&
+      Keyword.get(opts, :default_value) == nil
   end
 
   def is_required({_, _, _, opts}) do

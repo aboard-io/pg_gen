@@ -189,6 +189,7 @@ defmodule Introspection.Model do
             num: attr["num"],
             is_not_null: attr["isNotNull"],
             has_default: attr["hasDefault"],
+            default_value: attr["defaultValue"],
             type_id: attr["typeId"],
             type: nil,
             constraints: nil,
@@ -515,6 +516,7 @@ defmodule Introspection.Model do
             # if number is zero, it's a computed index and we don't need to use it here
             [0] ->
               nil
+
             [single_col] ->
               attr = Enum.find(table.attributes, fn %{num: num} -> num == single_col end)
               {attr.name, attr.type}
@@ -534,11 +536,6 @@ defmodule Introspection.Model do
       end)
       |> Enum.map(fn attr -> {attr.name, attr.type} end)
 
-    # if table.name == "object_tasks" do
-    #   IO.inspect(boolean_cols)
-    #   require IEx; IEx.pry
-    # end
-    #
     indexed_attrs =
       (indexed_attrs ++ boolean_cols)
       |> Enum.uniq()
@@ -584,7 +581,13 @@ defmodule Introspection.Model do
       |> Stream.map(&add_type_for_attribute(%{type_id: &1}, types))
       |> Stream.with_index()
       |> Enum.map(fn {arg, index} -> Map.put(arg, :name, Enum.at(arg_names, index)) end)
-      |> Enum.map(fn arg ->Map.put(arg, :prefixed_with_underscore, Enum.member?(underscore_prefixed_arg_names, "_#{arg.name}")) end)
+      |> Enum.map(fn arg ->
+        Map.put(
+          arg,
+          :prefixed_with_underscore,
+          Enum.member?(underscore_prefixed_arg_names, "_#{arg.name}")
+        )
+      end)
 
     return_type =
       if args_count < length(arg_names) do

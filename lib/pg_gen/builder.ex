@@ -148,15 +148,22 @@ defmodule PgGen.Builder do
     "enum"
   end
 
-  def build_field_options(%{
-        is_not_null: is_not_null,
-        has_default: has_default,
-        description: description,
-        type: %{enum_variants: enum_variants, name: name}
-      }) do
+  def build_field_options(
+        %{
+          is_not_null: is_not_null,
+          has_default: has_default,
+          description: description,
+          type: %{enum_variants: enum_variants, name: name}
+        } = attr
+      ) do
     [
       is_not_null: is_not_null,
       has_default: has_default,
+      default_value:
+        if(has_default && is_nil(Map.get(attr, :default_value, :nope)),
+          do: "nullable",
+          else: Map.get(attr, :default_value)
+        ),
       description: description,
       values: enum_variants,
       enum_name: if(is_nil(enum_variants), do: nil, else: name)
@@ -171,7 +178,8 @@ defmodule PgGen.Builder do
       ) do
     options =
       build_reference_options(attribute, referenced_table, table_name, external_reference: false)
-      |> Keyword.merge(build_field_options(attribute))
+      # manually adding default value b/c references don't apply here anyway
+      |> Keyword.merge(build_field_options(Map.put(attribute, :default_value, nil)))
       |> Keyword.put(:type, attribute.type.name)
 
     {:belongs_to, (format_assoc(options[:fk], table_name) || table_name) |> Inflex.singularize(),

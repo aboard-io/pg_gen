@@ -221,6 +221,7 @@ defmodule Introspection.Query do
           nullif(att.atttypmod, -1) as "typeModifier",
           att.attnotnull as "isNotNull",
           att.atthasdef as "hasDefault",
+          pg_get_expr(def.adbin, def.adrelid) as "defaultValue",  -- Use pg_get_expr to get the default value expression
           #{if server_version_num >= 100_000, do: "att.attidentity", else: "''"} as "identity",
           exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'SELECT')) as "aclSelectable",
           exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'INSERT')) as "aclInsertable",
@@ -230,6 +231,7 @@ defmodule Introspection.Query do
         from
           pg_catalog.pg_attribute as att
           left join pg_catalog.pg_description as dsc on dsc.objoid = att.attrelid and dsc.objsubid = att.attnum and dsc.classoid = 'pg_catalog.pg_class'::regclass
+          left join pg_catalog.pg_attrdef as def on def.adrelid = att.attrelid and def.adnum = att.attnum  -- Join with pg_attrdef to get the default value
         where
           att.attrelid in (select "id" from class) and
           att.attnum > 0 and
