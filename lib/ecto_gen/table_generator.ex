@@ -191,7 +191,7 @@ defmodule EctoGen.TableGenerator do
        @derive {Jason.Encoder, only: @pg_columns}
 
        alias #{app_name}.Repo
-       alias #{app_name}.Repo.{#{aliases}}
+       #{if not Enum.empty?(aliases), do: "alias #{app_name}.Repo.{#{aliases}}", else: ""}
 
        @schema_prefix "#{schema}"
        #{if primary_key_type, do: "@primary_key {:id, #{primary_key_type}, autogenerate: false}", else: "@primary_key false"}
