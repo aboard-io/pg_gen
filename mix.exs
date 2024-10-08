@@ -5,7 +5,7 @@ defmodule PgGen.MixProject do
     [
       app: :pg_gen,
       version: "0.1.0",
-      elixir: "~> 1.16",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -30,7 +30,7 @@ defmodule PgGen.MixProject do
       {:inflex, github: "adampash/inflex", ref: "d44151a3f0c2decedcdf16d01a11d32d799819e1"},
       {:postgrex, ">= 0.0.0"},
       {:flow, "~> 1.0"},
-      {:file_system, "~> 0.2.10"},
+      {:file_system, "~> 1.0"},
       {:absinthe, "~> 1.7.1"},
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
