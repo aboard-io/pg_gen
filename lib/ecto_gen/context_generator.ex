@@ -435,7 +435,8 @@ defmodule EctoGen.ContextGenerator do
           return_type: %{type: %{name: type_name}},
           arg_names: arg_names,
           returns_set: true,
-          args: arg_types
+          args: arg_types,
+          args_with_default_count: args_with_default_count
         } = _fun,
         schema,
         table
@@ -443,8 +444,16 @@ defmodule EctoGen.ContextGenerator do
     has_args = length(arg_names) > 0
     args = Enum.join(arg_names, ", ")
 
+    # Determine which args are optional
+    args_count = length(arg_names)
+    strict_args_count = args_count - args_with_default_count
+    optional_arg_names = Enum.slice(arg_names, strict_args_count..args_count)
+
+    # Generate args string with proper UUID handling for optional parameters
+    args_str = generate_args_str(arg_types, optional_arg_names)
+
     pinned_args_string =
-      generate_args_str(arg_types)
+      args_str
       |> String.split(", ")
       |> Stream.map(fn arg -> "^#{arg}" end)
       |> Enum.join(", ")
@@ -469,25 +478,59 @@ defmodule EctoGen.ContextGenerator do
       """
     else
       simple_args_str = Enum.join(arg_names ++ ["context"], ", ")
-      args_str = generate_args_str(arg_types)
 
       repo_name = type_name |> PgGen.Utils.singularize() |> Macro.camelize()
 
-      arg_positions =
-        arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
+      # Handle optional parameters
+      if args_with_default_count == 0 do
+        arg_positions =
+          arg_names |> Enum.with_index(fn _, index -> "$#{index + 1}" end) |> Enum.join(", ")
 
-      """
-      def #{name}(#{simple_args_str}) do
-        repo = context |> Map.get(:repo)
-        case repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
-          {:ok, result} ->
-            Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1}))
+        """
+        def #{name}(#{simple_args_str}) do
+          repo = context |> Map.get(:repo)
+          case repo.query("select * from #{schema}.#{name}(#{arg_positions})", [#{args_str}]) do
+            {:ok, result} ->
+              Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1}))
 
-          {:error, reason} ->
-            {:error, reason.postgres}
+            {:error, reason} ->
+              {:error, reason.postgres}
+          end
         end
+        """
+      else
+        # Use the same pattern as in move_object_to_workflow for handling optional parameters
+        params_string = generate_params_str(arg_types)
+
+        """
+        def #{name}(#{simple_args_str}) do
+          repo = context |> Map.get(:repo)
+
+          arg_values = [#{args_str}]
+          arg_names = [#{params_string}]
+
+          args_with_values =
+            Enum.zip(arg_names, arg_values)
+            |> Enum.filter(fn {_, value} -> value != :__MISSING__ end)
+
+          values =
+            args_with_values
+            |> Enum.map(fn {_, value} -> value end)
+
+          args =
+            Enum.with_index(args_with_values, fn {arg, _}, index -> "#\{arg} => $#\{index + 1}" end)
+            |> Enum.join(", ")
+
+          case repo.query("select * from #{schema}.#{name}(#\{args})", values) do
+            {:ok, result} ->
+              Enum.map(result.rows, &Repo.load(#{repo_name}, {result.columns, &1}))
+
+            {:error, reason} ->
+              {:error, reason.postgres}
+          end
+        end
+        """
       end
-      """
     end
   end
 
